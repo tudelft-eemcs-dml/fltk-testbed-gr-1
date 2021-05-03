@@ -1,0 +1,19 @@
+---
+# Experiment configuration
+total_epochs: 10
+epochs_per_cycle: 1
+wait_for_clients: true
+net: AdultMLP
+dataset: adult
+# Use cuda is available; setting to false will force CPU
+cuda: false
+experiment_prefix: "adult_mlp"
+output_location: "output"
+tensor_board_active: true
+clients_per_round: 2
+system:
+  federator:
+    hostname: "192.168.1.183"
+    nic: "wlo1"
+  clients:
+    amount: 3

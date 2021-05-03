@@ -1,15 +1,10 @@
-import os
-import sys
-import torch.distributed.rpc as rpc
+import argparse
 import logging
 
 import yaml
-import argparse
 
-import torch.multiprocessing as mp
-from fltk.federator import Federator
 from fltk.launch import run_single, run_spawn
-from fltk.util.base_config import BareConfig
+from fltk.synthpriv.config import SynthPrivConfig
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -30,7 +25,7 @@ def main():
 
     args = parser.parse_args()
     with open(args.config) as file:
-        cfg = BareConfig()
+        cfg = SynthPrivConfig()
         yaml_data = yaml.load(file, Loader=yaml.FullLoader)
         cfg.merge_yaml(yaml_data)
         if args.mode == "single":

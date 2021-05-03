@@ -42,7 +42,10 @@ def run_single(rank, world_size, host=None, args=None, nic=None):
     if rank != 0:
         logging.info(f"Starting worker {rank}")
         rpc.init_rpc(
-            f"client{rank}", rank=rank, world_size=world_size, rpc_backend_options=options,
+            f"client{rank}",
+            rank=rank,
+            world_size=world_size,
+            rpc_backend_options=options,
         )
         # trainer passively waiting for ps to kick off training iterations
     else:

@@ -13,7 +13,6 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
 
-from fltk.datasets.distributed import DistCIFAR10Dataset
 from fltk.schedulers import MinCapableStepLR
 from fltk.util.arguments import Arguments
 from fltk.util.log import FLLogger
@@ -105,13 +104,11 @@ class Client:
     def init(self):
         pass
 
-    def init_dataloader(
-        self,
-    ):
+    def init_dataloader(self):
         self.args.distributed = True
         self.args.rank = self.rank
         self.args.world_size = self.world_size
-        self.dataset = DistCIFAR10Dataset(self.args)
+        self.dataset = self.args.get_dataset()
         self.finished_init = True
         logging.info("Done with init")
 
@@ -200,7 +197,7 @@ class Client:
         :param epoch: Current epoch #
         :type epoch: int
         """
-        # self.net.train()
+        self.net.train()
 
         # save model
         if self.args.should_save_model(epoch):
