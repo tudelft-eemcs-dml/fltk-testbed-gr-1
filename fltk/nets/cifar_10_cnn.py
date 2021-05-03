@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class Cifar10CNN(nn.Module):
 
+class Cifar10CNN(nn.Module):
     def __init__(self):
         super(Cifar10CNN, self).__init__()
 

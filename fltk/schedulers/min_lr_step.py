@@ -1,5 +1,4 @@
 class MinCapableStepLR:
-
     def __init__(self, logger, optimizer, step_size, gamma, min_lr):
         """
         :param logger: logger
@@ -37,12 +36,12 @@ class MinCapableStepLR:
         return self.epoch_idx % self.step_size == 0
 
     def update_lr(self):
-        if self.optimizer.param_groups[0]['lr'] * self.gamma >= self.min_lr:
-            self.optimizer.param_groups[0]['lr'] *= self.gamma
+        if self.optimizer.param_groups[0]["lr"] * self.gamma >= self.min_lr:
+            self.optimizer.param_groups[0]["lr"] *= self.gamma
         else:
             self.logger.warning("Updating LR would place it below min LR. Skipping LR update.")
 
-        self.logger.debug("New LR: {}".format(self.optimizer.param_groups[0]['lr']))
+        self.logger.debug("New LR: {}".format(self.optimizer.param_groups[0]["lr"]))
 
     def increment_epoch_index(self):
         self.epoch_idx += 1

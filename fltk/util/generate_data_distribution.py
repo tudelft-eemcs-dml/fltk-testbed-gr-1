@@ -9,7 +9,7 @@ from fltk.util.data_loader_utils import generate_train_loader, generate_test_loa
 logging.basicConfig(level=logging.DEBUG)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = Arguments(logging)
 
     # ---------------------------------

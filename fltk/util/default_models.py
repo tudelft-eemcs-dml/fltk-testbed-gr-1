@@ -1,12 +1,12 @@
-
 import os
 import torch
 import logging
+
 logging.basicConfig(level=logging.DEBUG)
 from fltk.nets import Cifar10CNN, FashionMNISTCNN, Cifar100ResNet, FashionMNISTResNet, Cifar10ResNet, Cifar100VGG
 from fltk.util.arguments import Arguments
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = Arguments(logging)
     if not os.path.exists(args.get_default_model_folder_path()):
         os.mkdir(args.get_default_model_folder_path())

@@ -5,7 +5,6 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 
 class CIFAR10Dataset(Dataset):
-
     def __init__(self, args):
         super(CIFAR10Dataset, self).__init__(args)
 
@@ -13,15 +12,18 @@ class CIFAR10Dataset(Dataset):
         self.get_args().get_logger().debug("Loading CIFAR10 train data")
 
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize
-        ])
+        transform = transforms.Compose(
+            [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, 4), transforms.ToTensor(), normalize]
+        )
 
-        train_dataset = datasets.CIFAR10(root=self.get_args().get_data_path(), train=True, download=True, transform=transform)
-        sampler = DistributedSampler(train_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size()) if self.args.get_distributed() else None
+        train_dataset = datasets.CIFAR10(
+            root=self.get_args().get_data_path(), train=True, download=True, transform=transform
+        )
+        sampler = (
+            DistributedSampler(train_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size())
+            if self.args.get_distributed()
+            else None
+        )
         train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), sampler=sampler)
         self.args.set_sampler(sampler)
 
@@ -35,12 +37,15 @@ class CIFAR10Dataset(Dataset):
         self.get_args().get_logger().debug("Loading CIFAR10 test data")
 
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            normalize
-        ])
-        test_dataset = datasets.CIFAR10(root=self.get_args().get_data_path(), train=False, download=True, transform=transform)
-        sampler = DistributedSampler(test_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size()) if self.args.get_distributed() else None
+        transform = transforms.Compose([transforms.ToTensor(), normalize])
+        test_dataset = datasets.CIFAR10(
+            root=self.get_args().get_data_path(), train=False, download=True, transform=transform
+        )
+        sampler = (
+            DistributedSampler(test_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size())
+            if self.args.get_distributed()
+            else None
+        )
         test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), sampler=sampler)
         self.args.set_sampler(sampler)
 

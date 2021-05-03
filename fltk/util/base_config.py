@@ -6,8 +6,8 @@ from fltk.nets import Cifar10CNN, FashionMNISTCNN, Cifar100ResNet, FashionMNISTR
 SEED = 1
 torch.manual_seed(SEED)
 
-class BareConfig:
 
+class BareConfig:
     def __init__(self):
         # self.logger = logger
 
@@ -21,7 +21,7 @@ class BareConfig:
         self.log_interval = 10
         self.kwargs = {}
         self.contribution_measurement_round = 1
-        self.contribution_measurement_metric = 'Influence'
+        self.contribution_measurement_metric = "Influence"
 
         self.scheduler_step_size = 50
         self.scheduler_gamma = 0.5
@@ -36,11 +36,11 @@ class BareConfig:
         self.save_model_path = "models"
         self.epoch_save_start_suffix = "start"
         self.epoch_save_end_suffix = "end"
-        self.get_poison_effort = 'half'
+        self.get_poison_effort = "half"
         self.num_workers = 50
         # self.num_poisoned_workers = 10
 
-        self.federator_host = '0.0.0.0'
+        self.federator_host = "0.0.0.0"
         self.rank = 0
         self.world_size = 0
         self.data_sampler = None
@@ -51,33 +51,31 @@ class BareConfig:
             "Cifar10CNN": Cifar10CNN,
             "Cifar10ResNet": Cifar10ResNet,
             "FashionMNISTCNN": FashionMNISTCNN,
-            "FashionMNISTResNet": FashionMNISTResNet
-
+            "FashionMNISTResNet": FashionMNISTResNet,
         }
         self.net = None
-        self.set_net_by_name('Cifar10CNN')
-        self.dataset_name = 'cifar10'
+        self.set_net_by_name("Cifar10CNN")
+        self.dataset_name = "cifar10"
         self.train_data_loader_pickle_path = {
-            'cifar10': 'data_loaders/cifar10/train_data_loader.pickle',
-            'fashion-mnist': 'data_loaders/fashion-mnist/train_data_loader.pickle',
-            'cifar100': 'data_loaders/cifar100/train_data_loader.pickle',
+            "cifar10": "data_loaders/cifar10/train_data_loader.pickle",
+            "fashion-mnist": "data_loaders/fashion-mnist/train_data_loader.pickle",
+            "cifar100": "data_loaders/cifar100/train_data_loader.pickle",
         }
 
         self.test_data_loader_pickle_path = {
-            'cifar10': 'data_loaders/cifar10/test_data_loader.pickle',
-            'fashion-mnist': 'data_loaders/fashion-mnist/test_data_loader.pickle',
-            'cifar100': 'data_loaders/cifar100/test_data_loader.pickle',
+            "cifar10": "data_loaders/cifar10/test_data_loader.pickle",
+            "fashion-mnist": "data_loaders/fashion-mnist/test_data_loader.pickle",
+            "cifar100": "data_loaders/cifar100/test_data_loader.pickle",
         }
         self.loss_function = torch.nn.CrossEntropyLoss
         self.default_model_folder_path = "default_models"
         self.data_path = "data"
 
-
     ###########
     # Methods #
     ###########
 
-    def merge_yaml(self, cfg = {}):
+    def merge_yaml(self, cfg={}):
         """
         total_epochs: 20
         epochs_per_cycle: 2
@@ -90,39 +88,38 @@ class BareConfig:
         :param yaml_config:
         :return:
         """
-        if 'total_epochs' in cfg:
-            self.epochs = cfg['total_epochs']
-        if 'epochs_per_cycle' in cfg:
-            self.epochs_per_cycle = cfg['epochs_per_cycle']
-        if 'wait_for_clients' in cfg:
-            self.wait_for_clients = cfg['wait_for_clients']
-        if 'net' in cfg:
-            self.set_net_by_name(cfg['net'])
-        if 'dataset' in cfg:
-            self.dataset_name = cfg['dataset']
-        if 'experiment_prefix' in cfg:
-            self.experiment_prefix = cfg['experiment_prefix']
-        if 'output_location' in cfg:
-            self.output_location = cfg['output_location']
-        if 'tensor_board_active' in cfg:
-            self.tensor_board_active = cfg['tensor_board_active']
-        if 'clients_per_round' in cfg:
-            self.clients_per_round = cfg['clients_per_round']
-        if 'system' in cfg:
-            if 'clients' in cfg['system']:
-                if 'amount' in cfg['system']['clients']:
-                    self.world_size = cfg['system']['clients']['amount'] + 1
+        if "total_epochs" in cfg:
+            self.epochs = cfg["total_epochs"]
+        if "epochs_per_cycle" in cfg:
+            self.epochs_per_cycle = cfg["epochs_per_cycle"]
+        if "wait_for_clients" in cfg:
+            self.wait_for_clients = cfg["wait_for_clients"]
+        if "net" in cfg:
+            self.set_net_by_name(cfg["net"])
+        if "dataset" in cfg:
+            self.dataset_name = cfg["dataset"]
+        if "experiment_prefix" in cfg:
+            self.experiment_prefix = cfg["experiment_prefix"]
+        if "output_location" in cfg:
+            self.output_location = cfg["output_location"]
+        if "tensor_board_active" in cfg:
+            self.tensor_board_active = cfg["tensor_board_active"]
+        if "clients_per_round" in cfg:
+            self.clients_per_round = cfg["clients_per_round"]
+        if "system" in cfg:
+            if "clients" in cfg["system"]:
+                if "amount" in cfg["system"]["clients"]:
+                    self.world_size = cfg["system"]["clients"]["amount"] + 1
 
-        if 'system' in cfg:
-            if 'federator' in cfg['system']:
-                if 'hostname' in cfg['system']['federator']:
-                    self.federator_host = cfg['system']['federator']['hostname']
-        if 'cuda' in cfg:
-            if cfg['cuda']:
+        if "system" in cfg:
+            if "federator" in cfg["system"]:
+                if "hostname" in cfg["system"]["federator"]:
+                    self.federator_host = cfg["system"]["federator"]["hostname"]
+        if "cuda" in cfg:
+            if cfg["cuda"]:
                 self.cuda = True
             else:
                 self.cuda = False
-
 
     def init_logger(self, logger):
         self.logger = logger
@@ -169,13 +166,13 @@ class BareConfig:
     def get_nets_list(self):
         return list(self.available_nets.keys())
 
-    def set_train_data_loader_pickle_path(self, path, name='cifar10'):
+    def set_train_data_loader_pickle_path(self, path, name="cifar10"):
         self.train_data_loader_pickle_path[name] = path
 
     def get_train_data_loader_pickle_path(self):
         return self.train_data_loader_pickle_path[self.dataset_name]
 
-    def set_test_data_loader_pickle_path(self, path, name='cifar10'):
+    def set_test_data_loader_pickle_path(self, path, name="cifar10"):
         self.test_data_loader_pickle_path[name] = path
 
     def get_test_data_loader_pickle_path(self):
@@ -288,31 +285,34 @@ class BareConfig:
         self.logger.debug("Arguments: {}", str(self))
 
     def __str__(self):
-        return "\nBatch Size: {}\n".format(self.batch_size) + \
-               "Test Batch Size: {}\n".format(self.test_batch_size) + \
-               "Epochs: {}\n".format(self.epochs) + \
-               "Learning Rate: {}\n".format(self.lr) + \
-               "Momentum: {}\n".format(self.momentum) + \
-               "CUDA Enabled: {}\n".format(self.cuda) + \
-               "Shuffle Enabled: {}\n".format(self.shuffle) + \
-               "Log Interval: {}\n".format(self.log_interval) + \
-               "Scheduler Step Size: {}\n".format(self.scheduler_step_size) + \
-               "Scheduler Gamma: {}\n".format(self.scheduler_gamma) + \
-               "Scheduler Minimum Learning Rate: {}\n".format(self.min_lr) + \
-               "Client Selection Strategy: {}\n".format(self.round_worker_selection_strategy) + \
-               "Client Selection Strategy Arguments: {}\n".format(
-                   json.dumps(self.round_worker_selection_strategy_kwargs, indent=4, sort_keys=True)) + \
-               "Model Saving Enabled: {}\n".format(self.save_model) + \
-               "Model Saving Interval: {}\n".format(self.save_epoch_interval) + \
-               "Model Saving Path (Relative): {}\n".format(self.save_model_path) + \
-               "Epoch Save Start Prefix: {}\n".format(self.epoch_save_start_suffix) + \
-               "Epoch Save End Suffix: {}\n".format(self.epoch_save_end_suffix) + \
-               "Number of Clients: {}\n".format(self.num_workers) + \
-               "Number of Poisoned Clients: {}\n".format(self.num_poisoned_workers) + \
-               "NN: {}\n".format(self.net) + \
-               "Train Data Loader Path: {}\n".format(self.train_data_loader_pickle_path) + \
-               "Test Data Loader Path: {}\n".format(self.test_data_loader_pickle_path) + \
-               "Loss Function: {}\n".format(self.loss_function) + \
-               "Default Model Folder Path: {}\n".format(self.default_model_folder_path) + \
-               "Data Path: {}\n".format(self.data_path) + \
-               "Dataset Name: {}\n".format(self.dataset_name)
+        return (
+            "\nBatch Size: {}\n".format(self.batch_size)
+            + "Test Batch Size: {}\n".format(self.test_batch_size)
+            + "Epochs: {}\n".format(self.epochs)
+            + "Learning Rate: {}\n".format(self.lr)
+            + "Momentum: {}\n".format(self.momentum)
+            + "CUDA Enabled: {}\n".format(self.cuda)
+            + "Shuffle Enabled: {}\n".format(self.shuffle)
+            + "Log Interval: {}\n".format(self.log_interval)
+            + "Scheduler Step Size: {}\n".format(self.scheduler_step_size)
+            + "Scheduler Gamma: {}\n".format(self.scheduler_gamma)
+            + "Scheduler Minimum Learning Rate: {}\n".format(self.min_lr)
+            + "Client Selection Strategy: {}\n".format(self.round_worker_selection_strategy)
+            + "Client Selection Strategy Arguments: {}\n".format(
+                json.dumps(self.round_worker_selection_strategy_kwargs, indent=4, sort_keys=True)
+            )
+            + "Model Saving Enabled: {}\n".format(self.save_model)
+            + "Model Saving Interval: {}\n".format(self.save_epoch_interval)
+            + "Model Saving Path (Relative): {}\n".format(self.save_model_path)
+            + "Epoch Save Start Prefix: {}\n".format(self.epoch_save_start_suffix)
+            + "Epoch Save End Suffix: {}\n".format(self.epoch_save_end_suffix)
+            + "Number of Clients: {}\n".format(self.num_workers)
+            + "Number of Poisoned Clients: {}\n".format(self.num_poisoned_workers)
+            + "NN: {}\n".format(self.net)
+            + "Train Data Loader Path: {}\n".format(self.train_data_loader_pickle_path)
+            + "Test Data Loader Path: {}\n".format(self.test_data_loader_pickle_path)
+            + "Loss Function: {}\n".format(self.loss_function)
+            + "Default Model Folder Path: {}\n".format(self.default_model_folder_path)
+            + "Data Path: {}\n".format(self.data_path)
+            + "Dataset Name: {}\n".format(self.dataset_name)
+        )

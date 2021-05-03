@@ -10,8 +10,11 @@ from fltk.datasets.data_distribution import distribute_batches_equally
 from fltk.strategy.client_selection import random_selection
 from fltk.util.arguments import Arguments
 from fltk.util.base_config import BareConfig
-from fltk.util.data_loader_utils import load_train_data_loader, load_test_data_loader, \
-    generate_data_loaders_from_distributed_dataset
+from fltk.util.data_loader_utils import (
+    load_train_data_loader,
+    load_test_data_loader,
+    generate_data_loaders_from_distributed_dataset,
+)
 from fltk.util.fed_avg import average_nn_parameters
 from fltk.util.log import FLLogger
 from torchsummary import summary
@@ -24,6 +27,7 @@ from fltk.util.tensor_converter import convert_distributed_data_into_numpy
 
 logging.basicConfig(level=logging.DEBUG)
 
+
 def _call_method(method, rref, *args, **kwargs):
     return method(rref.local_value(), *args, **kwargs)
 
@@ -32,9 +36,11 @@ def _remote_method(method, rref, *args, **kwargs):
     args = [method, rref] + list(args)
     return rpc.rpc_sync(rref.owner(), _call_method, args=args, kwargs=kwargs)
 
+
 def _remote_method_async(method, rref, *args, **kwargs):
     args = [method, rref] + list(args)
     return rpc.rpc_async(rref.owner(), _call_method, args=args, kwargs=kwargs)
+
 
 class ClientRef:
     ref = None
@@ -50,6 +56,7 @@ class ClientRef:
     def __repr__(self):
         return self.name
 
+
 class Federator:
     """
     Central component of the Federated Learning System: The Federator
@@ -63,39 +70,44 @@ class Federator:
     - Keep track of timing
 
     """
+
     clients: List[ClientRef] = []
     epoch_counter = 0
     client_data = {}
 
-    def __init__(self, client_id_triple, num_epochs = 3, config=None):
+    def __init__(self, client_id_triple, num_epochs=3, config=None):
         log_rref = rpc.RRef(FLLogger())
         self.log_rref = log_rref
         self.num_epoch = num_epochs
         self.config = config
         self.tb_path = config.output_location
         self.ensure_path_exists(self.tb_path)
-        self.tb_writer = SummaryWriter(f'{self.tb_path}/{config.experiment_prefix}_federator')
+        self.tb_writer = SummaryWriter(f"{self.tb_path}/{config.experiment_prefix}_federator")
         self.create_clients(client_id_triple)
         self.config.init_logger(logging)
 
     def create_clients(self, client_id_triple):
         for id, rank, world_size in client_id_triple:
-            client = rpc.remote(id, Client, kwargs=dict(id=id, log_rref=self.log_rref, rank=rank, world_size=world_size, config=self.config))
-            writer = SummaryWriter(f'{self.tb_path}/{self.config.experiment_prefix}_client_{id}')
+            client = rpc.remote(
+                id,
+                Client,
+                kwargs=dict(id=id, log_rref=self.log_rref, rank=rank, world_size=world_size, config=self.config),
+            )
+            writer = SummaryWriter(f"{self.tb_path}/{self.config.experiment_prefix}_client_{id}")
             self.clients.append(ClientRef(id, client, tensorboard_writer=writer))
             self.client_data[id] = []
 
-    def select_clients(self, n = 2):
+    def select_clients(self, n=2):
         return random_selection(self.clients, n)
 
     def ping_all(self):
         for client in self.clients:
-            logging.info(f'Sending ping to {client}')
+            logging.info(f"Sending ping to {client}")
             t_start = time.time()
             answer = _remote_method(Client.ping, client.ref)
             t_end = time.time()
-            duration = (t_end - t_start)*1000
-            logging.info(f'Ping to {client} is {duration:.3}ms')
+            duration = (t_end - t_start) * 1000
+            logging.info(f"Ping to {client} is {duration:.3}ms")
 
     def rpc_test_all(self):
         for client in self.clients:
@@ -119,14 +131,14 @@ class Federator:
             for res in responses:
                 result = res[1].wait()
                 if result:
-                    logging.info(f'{res[0]} is ready')
+                    logging.info(f"{res[0]} is ready")
                     ready_clients.append(res[0])
                 else:
-                    logging.info(f'Waiting for {res[0]}')
+                    logging.info(f"Waiting for {res[0]}")
                     all_ready = False
 
             time.sleep(2)
-        logging.info('All clients are ready')
+        logging.info("All clients are ready")
 
     def remote_run_epoch(self, epochs):
         responses = []
@@ -138,16 +150,18 @@ class Federator:
         for res in responses:
             epoch_data, weights = res[1].wait()
             self.client_data[epoch_data.client_id].append(epoch_data)
-            logging.info(f'{res[0]} had a loss of {epoch_data.loss}')
-            logging.info(f'{res[0]} had a epoch data of {epoch_data}')
+            logging.info(f"{res[0]} had a loss of {epoch_data.loss}")
+            logging.info(f"{res[0]} had a epoch data of {epoch_data}")
 
-            res[0].tb_writer.add_scalar('training loss',
-                                        epoch_data.loss_train,  # for every 1000 minibatches
-                                        self.epoch_counter * res[0].data_size)
+            res[0].tb_writer.add_scalar(
+                "training loss",
+                epoch_data.loss_train,  # for every 1000 minibatches
+                self.epoch_counter * res[0].data_size,
+            )
 
-            res[0].tb_writer.add_scalar('accuracy',
-                                        epoch_data.accuracy,  # for every 1000 minibatches
-                                        self.epoch_counter * res[0].data_size)
+            res[0].tb_writer.add_scalar(
+                "accuracy", epoch_data.accuracy, self.epoch_counter * res[0].data_size  # for every 1000 minibatches
+            )
 
             client_weights.append(weights)
         updated_model = average_nn_parameters(client_weights)
@@ -155,11 +169,12 @@ class Federator:
         responses = []
         for client in self.clients:
             responses.append(
-                (client, _remote_method_async(Client.update_nn_parameters, client.ref, new_params=updated_model)))
+                (client, _remote_method_async(Client.update_nn_parameters, client.ref, new_params=updated_model))
+            )
 
         for res in responses:
             res[1].wait()
-        logging.info('Weights are updated')
+        logging.info("Weights are updated")
 
     def update_client_data_sizes(self):
         responses = []
@@ -167,7 +182,7 @@ class Federator:
             responses.append((client, _remote_method_async(Client.get_client_datasize, client.ref)))
         for res in responses:
             res[0].data_size = res[1].wait()
-            logging.info(f'{res[0]} had a result of datasize={res[0].data_size}')
+            logging.info(f"{res[0]} had a result of datasize={res[0].data_size}")
 
     def remote_test_sync(self):
         responses = []
@@ -176,14 +191,14 @@ class Federator:
 
         for res in responses:
             accuracy, loss, class_precision, class_recall = res[1].wait()
-            logging.info(f'{res[0]} had a result of accuracy={accuracy}')
+            logging.info(f"{res[0]} had a result of accuracy={accuracy}")
 
     def save_epoch_data(self):
-        file_output = f'./{self.config.output_location}'
+        file_output = f"./{self.config.output_location}"
         self.ensure_path_exists(file_output)
         for key in self.client_data:
-            filename = f'{file_output}/{key}_epochs.csv'
-            logging.info(f'Saving data at {filename}')
+            filename = f"{file_output}/{key}_epochs.csv"
+            logging.info(f"Saving data at {filename}")
             with open(filename, "w") as f:
                 w = DataclassWriter(f, self.client_data[key], EpochData)
                 w.write()
@@ -207,13 +222,12 @@ class Federator:
         epoch_to_run = self.config.epochs
         epoch_size = self.config.epochs_per_cycle
         for epoch in range(epoch_to_run):
-            print(f'Running epoch {epoch}')
+            print(f"Running epoch {epoch}")
             self.remote_run_epoch(epoch_size)
             addition += 1
-        logging.info('Printing client data')
+        logging.info("Printing client data")
         print(self.client_data)
 
-        logging.info(f'Saving data')
+        logging.info(f"Saving data")
         self.save_epoch_data()
-        logging.info(f'Federator is stopping')
-
+        logging.info(f"Federator is stopping")

@@ -25,10 +25,10 @@ from fltk.util.results import EpochData
 logging.basicConfig(level=logging.DEBUG)
 
 
-
 def _call_method(method, rref, *args, **kwargs):
     """helper for _remote_method()"""
     return method(rref.local_value(), *args, **kwargs)
+
 
 def _remote_method(method, rref, *args, **kwargs):
     """
@@ -39,9 +39,11 @@ def _remote_method(method, rref, *args, **kwargs):
     args = [method, rref] + list(args)
     return rpc.rpc_sync(rref.owner(), _call_method, args=args, kwargs=kwargs)
 
+
 def _remote_method_async(method, rref, *args, **kwargs):
     args = [method, rref] + list(args)
     return rpc.rpc_async(rref.owner(), _call_method, args=args, kwargs=kwargs)
+
 
 class Client:
     counter = 0
@@ -50,9 +52,8 @@ class Client:
     epoch_results: List[EpochData] = []
     epoch_counter = 0
 
-
-    def __init__(self, id, log_rref, rank, world_size, config = None):
-        logging.info(f'Welcome to client {id}')
+    def __init__(self, id, log_rref, rank, world_size, config=None):
+        logging.info(f"Welcome to client {id}")
         self.id = id
         self.log_rref = log_rref
         self.rank = rank
@@ -63,13 +64,16 @@ class Client:
         self.device = self.init_device()
         self.set_net(self.load_default_model())
         self.loss_function = self.args.get_loss_function()()
-        self.optimizer = torch.optim.SGD(self.net.parameters(),
-                                         lr=self.args.get_learning_rate(),
-                                         momentum=self.args.get_momentum())
-        self.scheduler = MinCapableStepLR(self.args.get_logger(), self.optimizer,
-                                          self.args.get_scheduler_step_size(),
-                                          self.args.get_scheduler_gamma(),
-                                          self.args.get_min_lr())
+        self.optimizer = torch.optim.SGD(
+            self.net.parameters(), lr=self.args.get_learning_rate(), momentum=self.args.get_momentum()
+        )
+        self.scheduler = MinCapableStepLR(
+            self.args.get_logger(),
+            self.optimizer,
+            self.args.get_scheduler_step_size(),
+            self.args.get_scheduler_gamma(),
+            self.args.get_min_lr(),
+        )
 
     def init_device(self):
         if self.args.cuda and torch.cuda.is_available():
@@ -78,14 +82,14 @@ class Client:
             return torch.device("cpu")
 
     def ping(self):
-        return 'pong'
+        return "pong"
 
     def rpc_test(self):
         sleep_time = random.randint(1, 5)
         time.sleep(sleep_time)
-        self.local_log(f'sleep for {sleep_time} seconds')
+        self.local_log(f"sleep for {sleep_time} seconds")
         self.counter += 1
-        log_line = f'Number of times called: {self.counter}'
+        log_line = f"Number of times called: {self.counter}"
         self.local_log(log_line)
         self.remote_log(log_line)
 
@@ -93,7 +97,7 @@ class Client:
         _remote_method_async(FLLogger.log, self.log_rref, self.id, message, time.time())
 
     def local_log(self, message):
-        logging.info(f'[{self.id}: {time.time()}]: {message}')
+        logging.info(f"[{self.id}: {time.time()}]: {message}")
 
     def set_configuration(self, config: str):
         yaml_config = yaml.safe_load(config)
@@ -101,13 +105,15 @@ class Client:
     def init(self):
         pass
 
-    def init_dataloader(self, ):
+    def init_dataloader(
+        self,
+    ):
         self.args.distributed = True
         self.args.rank = self.rank
         self.args.world_size = self.world_size
         self.dataset = DistCIFAR10Dataset(self.args)
         self.finished_init = True
-        logging.info('Done with init')
+        logging.info("Done with init")
 
     def is_ready(self):
         return self.finished_init
@@ -152,9 +158,11 @@ class Client:
             try:
                 model.load_state_dict(torch.load(model_file_path))
             except:
-                self.args.get_logger().warning("Couldn't load model. Attempting to map CUDA tensors to CPU to solve error.")
+                self.args.get_logger().warning(
+                    "Couldn't load model. Attempting to map CUDA tensors to CPU to solve error."
+                )
 
-                model.load_state_dict(torch.load(model_file_path, map_location=torch.device('cpu')))
+                model.load_state_dict(torch.load(model_file_path, map_location=torch.device("cpu")))
         else:
             self.args.get_logger().warning("Could not find model: {}".format(model_file_path))
 
@@ -174,7 +182,7 @@ class Client:
         :type new_params: dict
         """
         self.net.load_state_dict(copy.deepcopy(new_params), strict=True)
-        self.remote_log(f'Weigths of the model are updated')
+        self.remote_log(f"Weigths of the model are updated")
 
     def load_default_model(self):
         """
@@ -218,7 +226,9 @@ class Client:
             # print statistics
             running_loss += loss.item()
             if i % self.args.get_log_interval() == 0:
-                self.args.get_logger().info('[%d, %5d] loss: %.3f' % (epoch, i, running_loss / self.args.get_log_interval()))
+                self.args.get_logger().info(
+                    "[%d, %5d] loss: %.3f" % (epoch, i, running_loss / self.args.get_log_interval())
+                )
                 final_running_loss = running_loss / self.args.get_log_interval()
                 running_loss = 0.0
 
@@ -258,8 +268,8 @@ class Client:
         class_precision = self.calculate_class_precision(confusion_mat)
         class_recall = self.calculate_class_recall(confusion_mat)
 
-        self.args.get_logger().debug('Test set: Accuracy: {}/{} ({:.0f}%)'.format(correct, total, accuracy))
-        self.args.get_logger().debug('Test set: Loss: {}'.format(loss))
+        self.args.get_logger().debug("Test set: Accuracy: {}/{} ({:.0f}%)".format(correct, total, accuracy))
+        self.args.get_logger().debug("Test set: Loss: {}".format(loss))
         self.args.get_logger().debug("Classification Report:\n" + classification_report(targets_, pred_))
         self.args.get_logger().debug("Confusion Matrix:\n" + str(confusion_mat))
         self.args.get_logger().debug("Class precision: {}".format(str(class_precision)))
@@ -274,14 +284,24 @@ class Client:
             loss, weights = self.train(self.epoch_counter)
             self.epoch_counter += 1
         elapsed_time_train = datetime.datetime.now() - start_time_train
-        train_time_ms = int(elapsed_time_train.total_seconds()*1000)
+        train_time_ms = int(elapsed_time_train.total_seconds() * 1000)
 
         start_time_test = datetime.datetime.now()
         accuracy, test_loss, class_precision, class_recall = self.test()
         elapsed_time_test = datetime.datetime.now() - start_time_test
-        test_time_ms = int(elapsed_time_test.total_seconds()*1000)
+        test_time_ms = int(elapsed_time_test.total_seconds() * 1000)
 
-        data = EpochData(self.epoch_counter, train_time_ms, test_time_ms, loss, accuracy, test_loss, class_precision, class_recall, client_id=self.id)
+        data = EpochData(
+            self.epoch_counter,
+            train_time_ms,
+            test_time_ms,
+            loss,
+            accuracy,
+            test_loss,
+            class_precision,
+            class_recall,
+            client_id=self.id,
+        )
         self.epoch_results.append(data)
 
         # Copy GPU tensors to CPU
@@ -298,7 +318,10 @@ class Client:
         if not os.path.exists(self.args.get_save_model_folder_path()):
             os.mkdir(self.args.get_save_model_folder_path())
 
-        full_save_path = os.path.join(self.args.get_save_model_folder_path(), "model_" + str(self.client_idx) + "_" + str(epoch) + "_" + suffix + ".model")
+        full_save_path = os.path.join(
+            self.args.get_save_model_folder_path(),
+            "model_" + str(self.client_idx) + "_" + str(epoch) + "_" + suffix + ".model",
+        )
         torch.save(self.get_nn_parameters(), full_save_path)
 
     def calculate_class_precision(self, confusion_mat):
@@ -317,4 +340,4 @@ class Client:
         return len(self.dataset.get_train_sampler())
 
     def __del__(self):
-        print(f'Client {self.id} is stopping')
+        print(f"Client {self.id} is stopping")
