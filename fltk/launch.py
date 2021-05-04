@@ -59,5 +59,7 @@ def run_single(rank, world_size, host=None, args=None, nic=None):
 def run_spawn(config):
     world_size = config.world_size
     master_address = config.federator_host
+    nic = config.nic
     mp.set_sharing_strategy("file_system")
-    mp.spawn(run_single, args=(world_size, master_address, config), nprocs=world_size, join=True)
+    mp.set_start_method("spawn", True)
+    mp.spawn(run_single, args=(world_size, master_address, config, nic), nprocs=world_size, join=True)

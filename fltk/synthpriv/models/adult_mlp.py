@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch
 
 
 class Print(nn.Module):
@@ -10,7 +11,6 @@ class Print(nn.Module):
 class AdultMLP(nn.Module):
     def __init__(self):
         super(AdultMLP, self).__init__()
-        print("init mlp")
 
         self.net = nn.Sequential(
             # Print(),
@@ -29,7 +29,7 @@ class AdultMLP(nn.Module):
             nn.BatchNorm1d(32),
             nn.Dropout(p=0.25),
             # Print(),
-            nn.Linear(32, 1),
+            nn.Linear(32, 2),
             # Print(),
         )
 

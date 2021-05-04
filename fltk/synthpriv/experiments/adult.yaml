@@ -6,14 +6,14 @@ wait_for_clients: true
 net: AdultMLP
 dataset: adult
 # Use cuda is available; setting to false will force CPU
-cuda: false
+cuda: true
 experiment_prefix: "adult_mlp"
 output_location: "output"
 tensor_board_active: true
-clients_per_round: 2
+clients_per_round: 3
 system:
   federator:
-    hostname: "192.168.1.183"
-    nic: "wlo1"
+    hostname: "192.168.1.187"
+    nic: "enp8s0"
   clients:
-    amount: 3
+    amount: 5
