@@ -26,8 +26,9 @@ class DistCIFAR10Dataset(DistDataset):
             if self.args.get_distributed()
             else None
         )
-        self.train_loader = DataLoader(self.train_dataset, batch_size=16, sampler=self.train_sampler)
-        # self.train_loader = DataLoader(self.train_dataset, batch_size=len(self.train_dataset), sampler=self.train_sampler)
+        self.train_loader = DataLoader(
+            self.train_dataset, batch_size=self.get_args().get_batch_size(), sampler=self.train_sampler
+        )
 
     def init_test_dataset(self):
         self.get_args().get_logger().debug("Loading CIFAR10 test data")
@@ -42,8 +43,9 @@ class DistCIFAR10Dataset(DistDataset):
             if self.args.get_distributed()
             else None
         )
-        # self.test_sampler = None
-        self.test_loader = DataLoader(self.test_dataset, batch_size=16, sampler=self.test_sampler)
+        self.test_loader = DataLoader(
+            self.test_dataset, batch_size=self.get_args().get_batch_size(), sampler=self.test_sampler
+        )
 
     def load_train_dataset(self):
         self.get_args().get_logger().debug("Loading CIFAR10 train data")
@@ -61,7 +63,7 @@ class DistCIFAR10Dataset(DistDataset):
             if self.args.get_distributed()
             else None
         )
-        train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), sampler=sampler)
+        train_loader = DataLoader(train_dataset, batch_size=self.get_args().get_batch_size(), sampler=sampler)
         self.args.set_sampler(sampler)
 
         train_data = self.get_tuple_from_data_loader(train_loader)
@@ -83,7 +85,7 @@ class DistCIFAR10Dataset(DistDataset):
             if self.args.get_distributed()
             else None
         )
-        test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), sampler=sampler)
+        test_loader = DataLoader(test_dataset, batch_size=self.get_args().get_batch_size(), sampler=sampler)
         self.args.set_sampler(sampler)
 
         test_data = self.get_tuple_from_data_loader(test_loader)

@@ -1,20 +1,18 @@
-import argparse
 import logging
 import os
-import sys
 
+import torch
 import torch.distributed.rpc as rpc
 import torch.multiprocessing as mp
-import yaml
 
 from fltk.federator import Federator
-from fltk.util.base_config import BareConfig
 
 logging.basicConfig(level=logging.DEBUG)
+torch.backends.cudnn.benchmark = True
 
 
 def run_ps(rpc_ids_triple, args):
-    print(f"Starting the federator...")
+    logging.info(f"Starting the federator...")
     fed = Federator(rpc_ids_triple, config=args)
     fed.run()
 

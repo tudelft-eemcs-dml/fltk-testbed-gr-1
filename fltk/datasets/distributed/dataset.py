@@ -1,8 +1,4 @@
 from abc import abstractmethod
-from torch.utils.data import DataLoader
-from torch.utils.data import TensorDataset
-import torch
-import numpy
 
 from fltk.util.arguments import Arguments
 

@@ -1,14 +1,15 @@
 ---
 # Experiment configuration
-total_epochs: 50
+total_epochs: 100
 epochs_per_cycle: 1
 wait_for_clients: true
 batch_size: 64
-net: AdultMLP
-dataset: adult
+weight_decay: 0.0005
+net: Cifar100ResNet
+dataset: cifar100
 # Use cuda is available; setting to false will force CPU
 cuda: true
-experiment_prefix: "adult_mlp"
+experiment_prefix: "cifar100_resnet"
 output_location: "output"
 tensor_board_active: true
 clients_per_round: 4

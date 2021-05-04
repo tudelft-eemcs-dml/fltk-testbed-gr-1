@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import torch
 from fltk.datasets.distributed.dataset import DistDataset
-from sklearn.preprocessing import LabelEncoder, StandardScaler
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
 
@@ -20,31 +19,43 @@ class BaseDistDataset(DistDataset):
         self.init_test_dataset()
 
     def init_train_dataset(self):
-        self.get_args().get_logger().debug(f"Loading {self.name} train data")
         self.train_sampler = (
             DistributedSampler(self.train_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size())
             if self.args.get_distributed()
             else None
         )
-        self.train_loader = DataLoader(self.train_dataset, batch_size=16, sampler=self.train_sampler)
+        self.train_loader = DataLoader(
+            self.train_dataset,
+            batch_size=self.args.batch_size,
+            sampler=self.train_sampler,
+            num_workers=4,
+            prefetch_factor=int(self.args.batch_size / 4),
+            pin_memory=True,
+        )
 
     def init_test_dataset(self):
-        self.get_args().get_logger().debug(f"Loading {self.name} test data")
         self.test_sampler = (
             DistributedSampler(self.test_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size())
             if self.args.get_distributed()
             else None
         )
-        self.test_loader = DataLoader(self.test_dataset, batch_size=16, sampler=self.test_sampler)
+        self.test_loader = DataLoader(
+            self.test_dataset,
+            batch_size=self.args.batch_size,
+            sampler=self.test_sampler,
+            num_workers=4,
+            prefetch_factor=int(self.args.batch_size / 4),
+            pin_memory=True,
+        )
 
     def load_train_dataset(self):
-        self.get_args().get_logger().debug(f"Loading {self.name} train data")
+        self.args.get_logger().debug(f"Loading {self.name} train data")
         self.args.set_sampler(self.train_sampler)
         train_data = self.get_tuple_from_data_loader(self.train_loader)
         return train_data
 
     def load_test_dataset(self):
-        self.get_args().get_logger().debug(f"Loading {self.name} test data")
+        self.args.get_logger().debug(f"Loading {self.name} test data")
         self.args.set_sampler(self.test_sampler)
         test_data = self.get_tuple_from_data_loader(self.test_loader)
         return test_data
@@ -55,7 +66,7 @@ class DataframeDataset(Dataset):
     Loads rows from a dataframe.
     """
 
-    def __init__(self, df, lbls):
+    def __init__(self, df: pd.DataFrame, lbls: np.array):
         super().__init__()
         self.df = df
         self.lbls = lbls

@@ -63,8 +63,11 @@ class Client:
         self.device = self.init_device()
         self.set_net(self.load_default_model())
         self.loss_function = self.args.get_loss_function()()
-        self.optimizer = torch.optim.SGD(
-            self.net.parameters(), lr=self.args.get_learning_rate(), momentum=self.args.get_momentum()
+        self.optimizer = self.args.get_optimizer()(
+            self.net.parameters(),
+            lr=self.args.get_learning_rate(),
+            # momentum=self.args.get_momentum(),
+            weight_decay=self.args.get_weight_decay(),
         )
         self.scheduler = MinCapableStepLR(
             self.args.get_logger(),
@@ -76,7 +79,9 @@ class Client:
 
     def init_device(self):
         if self.args.cuda and torch.cuda.is_available():
-            return torch.device("cuda:0")
+            return torch.device(
+                f"cuda:{torch.multiprocessing.current_process()._identity[0] % torch.cuda.device_count()}"
+            )
         else:
             return torch.device("cpu")
 
@@ -116,8 +121,7 @@ class Client:
         return self.finished_init
 
     def set_net(self, net):
-        self.net = net
-        self.net.to(self.device)
+        self.net = net.to(self.device)
 
     def load_model_from_file(self, model_file_path):
         model_class = self.args.get_net()
