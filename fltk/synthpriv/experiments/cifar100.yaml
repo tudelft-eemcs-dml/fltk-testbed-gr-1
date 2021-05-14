@@ -18,4 +18,4 @@ system:
     hostname: "192.168.1.187"
     nic: "enp8s0"
   clients:
-    amount: 5
+    amount: 4

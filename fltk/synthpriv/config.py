@@ -26,6 +26,7 @@ class SynthPrivConfig(BareConfig):
         self.lr = 0.001
         self.batch_size = 16
         self.loss_function = torch.nn.CrossEntropyLoss
+        self.save_model = True
 
     def get_dataset(self):
         if self.dataset_name == "adult":

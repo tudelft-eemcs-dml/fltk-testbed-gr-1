@@ -1,6 +1,6 @@
 ---
 # Experiment configuration
-total_epochs: 100
+total_epochs: 50
 epochs_per_cycle: 1
 wait_for_clients: true
 batch_size: 16
@@ -17,4 +17,4 @@ system:
     hostname: "192.168.1.187"
     nic: "enp8s0"
   clients:
-    amount: 5
+    amount: 4

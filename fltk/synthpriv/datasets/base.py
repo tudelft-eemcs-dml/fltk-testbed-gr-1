@@ -15,6 +15,7 @@ class BaseDistDataset(DistDataset):
         self.name = name
         self.train_dataset = train_datset
         self.test_dataset = test_dataset
+        self.n_workers = 16
         self.init_train_dataset()
         self.init_test_dataset()
 
@@ -28,8 +29,8 @@ class BaseDistDataset(DistDataset):
             self.train_dataset,
             batch_size=self.args.batch_size,
             sampler=self.train_sampler,
-            num_workers=4,
-            prefetch_factor=int(self.args.batch_size / 4),
+            num_workers=self.n_workers,
+            prefetch_factor=int(self.args.batch_size / self.n_workers),
             pin_memory=True,
         )
 
@@ -43,8 +44,8 @@ class BaseDistDataset(DistDataset):
             self.test_dataset,
             batch_size=self.args.batch_size,
             sampler=self.test_sampler,
-            num_workers=4,
-            prefetch_factor=int(self.args.batch_size / 4),
+            num_workers=self.n_workers,
+            prefetch_factor=int(self.args.batch_size / self.n_workers),
             pin_memory=True,
         )
 

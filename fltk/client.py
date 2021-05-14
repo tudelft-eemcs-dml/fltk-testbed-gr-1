@@ -1,24 +1,19 @@
 import copy
 import datetime
+import logging
 import os
 import random
 import time
-from dataclasses import dataclass
 from typing import List
 
-import torch
-from torch.distributed import rpc
-import logging
 import numpy as np
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import classification_report
+import torch
+import yaml
+from sklearn.metrics import classification_report, confusion_matrix
+from torch.distributed import rpc
 
 from fltk.schedulers import MinCapableStepLR
-from fltk.util.arguments import Arguments
 from fltk.util.log import FLLogger
-
-import yaml
-
 from fltk.util.results import EpochData
 
 logging.basicConfig(level=logging.DEBUG)
@@ -173,7 +168,7 @@ class Client:
         """
         Returns the client index.
         """
-        return self.client_idx
+        return self.id
 
     def update_nn_parameters(self, new_params):
         """
@@ -201,10 +196,10 @@ class Client:
         :param epoch: Current epoch #
         :type epoch: int
         """
-        self.net.train()
+        self.net = self.net.train().to(self.device)
 
         # save model
-        if self.args.should_save_model(epoch):
+        if self.args.should_save_model(epoch) and self.id == "client1":
             self.save_model(epoch, self.args.get_epoch_save_start_suffix())
 
         running_loss = 0.0
@@ -236,7 +231,7 @@ class Client:
         self.scheduler.step()
 
         # save model
-        if self.args.should_save_model(epoch):
+        if self.args.should_save_model(epoch) and self.id == "client1":
             self.save_model(epoch, self.args.get_epoch_save_end_suffix())
 
         return final_running_loss, self.get_nn_parameters()
@@ -314,14 +309,14 @@ class Client:
         """
         Saves the model if necessary.
         """
-        self.args.get_logger().debug("Saving model to flat file storage. Save #{}", epoch)
+        self.args.get_logger().debug(f"Saving model to flat file storage. Save #{epoch}")
 
         if not os.path.exists(self.args.get_save_model_folder_path()):
             os.mkdir(self.args.get_save_model_folder_path())
 
         full_save_path = os.path.join(
             self.args.get_save_model_folder_path(),
-            "model_" + str(self.client_idx) + "_" + str(epoch) + "_" + suffix + ".model",
+            "model_" + str(self.id) + "_" + str(epoch) + "_" + suffix + ".model",
         )
         torch.save(self.get_nn_parameters(), full_save_path)
 
