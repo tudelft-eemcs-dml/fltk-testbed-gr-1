@@ -189,7 +189,7 @@ class NasrAttack(nn.Module):
         exploit_label=True,
         optimizer=torch.optim.Adam,
         learning_rate=0.001,
-        epochs=100,
+        epochs=10,
     ):
         super().__init__()
 
@@ -238,13 +238,14 @@ class NasrAttack(nn.Module):
 
         if self.gradients_to_exploit and len(self.gradients_to_exploit):
             layers = list(target_train_model.modules())
-            for g, l in enumerate(self.gradients_to_exploit):
+            self.grad_exploit_layers = []
+            for l in self.gradients_to_exploit:
                 layer = layers[l]
                 assert any(
                     map(lambda i: i in layer.__class__.__name__, GRAD_LAYERS_LIST)
                 ), f"Only Linear & Conv layers are supported for gradient-based attacks"
                 requires_cnn = map(lambda i: i in layer.__class__.__name__, CNN_COMPONENT_LIST)
-                self.gradients_to_exploit[g] = layer.weight
+                self.grad_exploit_layers.append(layer.weight)
                 if any(requires_cnn):
                     module = cnn_for_cnn_gradients(layer.weight.shape)
                     classifier_input_size += 64
@@ -291,7 +292,7 @@ class NasrAttack(nn.Module):
         model.requires_grad_(True)
         for feature, label in zip(features, labels):
             loss = nn.functional.cross_entropy(model(feature[None, :]), label[None])
-            grads = torch.autograd.grad(loss, self.gradients_to_exploit)
+            grads = torch.autograd.grad(loss, self.grad_exploit_layers)
             gradient_arr.append(grads)
         model.requires_grad_(False)
         return gradient_arr
@@ -400,10 +401,9 @@ class NasrAttack(nn.Module):
             pbar.write(f"Epoch {e} : Attack test accuracy: {attack_accuracy:.3f}, Best accuracy : {best_accuracy:.3f}")
 
         self.out_name = f"{self.__class__.__name__}_{self.target_train_model.__class__.__name__}_{best_accuracy:.3f}_{datetime.datetime.now()}"
-        output_model = self
-        output_model.load_state_dict(best_state_dict)
+        self.load_state_dict(best_state_dict)
         torch.save(
-            output_model.cpu().eval().requires_grad_(False).state_dict(),
+            self.cpu().eval().requires_grad_(False).state_dict(),
             f"models/{self.out_name}.pt",
         )
 
@@ -411,33 +411,49 @@ class NasrAttack(nn.Module):
         """
         Test the attack model on dataset and save plots for visualization.
         """
+        self.to(self.device)
+        self.target_test_model.to(self.device)
+
         mtrainset, nmtrainset = self.test_dataloader
 
         mpreds, mlab, nmpreds, nmlab, mfeat, nmfeat, mtrue, nmtrue = [], [], [], [], [], [], [], []
         mgradnorm, nmgradnorm = [], []
 
-        for (mfeatures, mlabels) in mtrainset:
-            moutputs = self.forward(self.target_test_model, mfeatures, mlabels)
-            mgradientnorm = self.get_gradient_norms(self.target_test_model, mfeatures, mlabels)
+        self.grad_exploit_layers = []
+        layers = list(self.target_test_model.modules())
+        for l in self.gradients_to_exploit:
+            layer = layers[l]
+            assert any(
+                map(lambda i: i in layer.__class__.__name__, GRAD_LAYERS_LIST)
+            ), f"Only Linear & Conv layers are supported for gradient-based attacks"
+            self.grad_exploit_layers.append(layer.weight)
 
-            mpreds.extend(moutputs.numpy())
-            mlab.extend(mlabels)
-            mfeat.extend(mfeatures)
+        for (mfeatures, mlabels) in mtrainset:
+            moutputs = self.forward(self.target_test_model, mfeatures.to(self.device), mlabels.to(self.device))
+            mgradientnorm = self.get_gradient_norms(
+                self.target_test_model, mfeatures.to(self.device), mlabels.to(self.device)
+            )
+
+            mpreds.extend(moutputs.cpu().numpy())
+            mlab.extend(mlabels.cpu().numpy())
+            mfeat.extend(mfeatures.cpu().numpy())
             mgradnorm.extend(mgradientnorm)
             mtrue.extend(np.ones(moutputs.shape))
 
         for (nmfeatures, nmlabels) in nmtrainset:
-            nmoutputs = self.forward(self.target_test_model, nmfeatures, nmlabels)
-            nmgradientnorm = self.get_gradient_norms(self.target_test_model, nmfeatures, nmlabels)
+            nmoutputs = self.forward(self.target_test_model, nmfeatures.to(self.device), nmlabels.to(self.device))
+            nmgradientnorm = self.get_gradient_norms(
+                self.target_test_model, nmfeatures.to(self.device), nmlabels.to(self.device)
+            )
 
-            nmpreds.extend(nmoutputs.numpy())
-            nmlab.extend(nmlabels)
-            nmfeat.extend(nmfeatures)
+            nmpreds.extend(nmoutputs.cpu().numpy())
+            nmlab.extend(nmlabels.cpu().numpy())
+            nmfeat.extend(nmfeatures.cpu().numpy())
             nmgradnorm.extend(nmgradientnorm)
             nmtrue.extend(np.zeros(nmoutputs.shape))
 
-        target = torch.cat((mtrue, nmtrue))
-        probs = torch.cat((mpreds, nmpreds))
+        target = np.concatenate((np.concatenate(mtrue), np.concatenate(nmtrue)))
+        probs = np.concatenate((np.concatenate(mpreds), np.concatenate(nmpreds)))
 
         font = {"weight": "bold", "size": 10}
 
@@ -495,7 +511,7 @@ class NasrAttack(nn.Module):
             gradnorm = []
             for l, p in zip(mlab, mgradientnorm):
                 if l == lab:
-                    gradnorm.append(p)
+                    gradnorm.append(p.cpu().numpy())
             xs.append(lab)
             ys.append(np.mean(gradnorm))
 
@@ -507,7 +523,7 @@ class NasrAttack(nn.Module):
             gradnorm = []
             for l, p in zip(nmlab, nmgradientnorm):
                 if l == lab:
-                    gradnorm.append(p)
+                    gradnorm.append(p.cpu().numpy())
             xs.append(lab)
             ys.append(np.mean(gradnorm))
         plt.plot(xs, ys, "r.", label="Population Data (Non-Members)")
@@ -519,47 +535,47 @@ class NasrAttack(nn.Module):
         plt.close()
 
         # Collect data and creates histogram for each label separately
-        for lab in range(len(unique_mem_lab)):
-            labs = []
-            for l, p in zip(mlab, mpreds):
-                if l == lab:
-                    labs.append(p)
+        # for lab in range(len(unique_mem_lab)):
+        #     labs = []
+        #     for l, p in zip(mlab, mpreds):
+        #         if l == lab:
+        #             labs.append(p)
 
-            plt.hist(
-                np.array(labs).flatten(),
-                color="xkcd:blue",
-                alpha=0.7,
-                bins=20,
-                label="Training Data (Members)",
-                histtype="bar",
-                range=(0, 1),
-                weights=(np.ones_like(labs) / len(labs)),
-            )
+        #     plt.hist(
+        #         np.array(labs).flatten(),
+        #         color="xkcd:blue",
+        #         alpha=0.7,
+        #         bins=20,
+        #         label="Training Data (Members)",
+        #         histtype="bar",
+        #         range=(0, 1),
+        #         weights=(np.ones_like(labs) / len(labs)),
+        #     )
 
-            labs = []
-            for l, p in zip(nmlab, nmpreds):
-                if l == lab:
-                    labs.append(p)
+        #     labs = []
+        #     for l, p in zip(nmlab, nmpreds):
+        #         if l == lab:
+        #             labs.append(p)
 
-            plt.hist(
-                np.array(labs).flatten(),
-                color="xkcd:light blue",
-                alpha=0.7,
-                bins=20,
-                label="Population Data (Non-members)",
-                histtype="bar",
-                range=(0, 1),
-                weights=(np.ones_like(labs) / len(labs)),
-            )
+        #     plt.hist(
+        #         np.array(labs).flatten(),
+        #         color="xkcd:light blue",
+        #         alpha=0.7,
+        #         bins=20,
+        #         label="Population Data (Non-members)",
+        #         histtype="bar",
+        #         range=(0, 1),
+        #         weights=(np.ones_like(labs) / len(labs)),
+        #     )
 
-            plt.legend()
-            plt.xlabel("Membership Probability")
-            plt.ylabel("Fraction")
+        #     plt.legend()
+        #     plt.xlabel("Membership Probability")
+        #     plt.ylabel("Fraction")
 
-            plt.title("Privacy Risk - Class " + str(lab))
-            plt.savefig(f"output/{self.out_name}_privacy_risk_label" + str(lab) + ".png")
+        #     plt.title("Privacy Risk - Class " + str(lab))
+        #     plt.savefig(f"output/{self.out_name}_privacy_risk_label" + str(lab) + ".png")
 
-            plt.close()
+        #     plt.close()
 
 
 if __name__ == "__main__":
