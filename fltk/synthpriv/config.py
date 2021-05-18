@@ -24,7 +24,7 @@ class SynthPrivConfig(BareConfig):
         self.optimizer = torch.optim.Adam
         self.weight_decay = 0
         self.lr = 0.001
-        self.batch_size = 16
+        self.batch_size = 64
         self.loss_function = torch.nn.CrossEntropyLoss
         self.save_model = True
 

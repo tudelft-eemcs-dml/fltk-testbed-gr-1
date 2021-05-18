@@ -17,54 +17,6 @@ from sklearn.metrics import accuracy_score, auc, roc_curve
 from torch import nn
 
 
-def init_weights(m):
-    if type(m) == nn.Linear or type(m) == nn.Conv2d:
-        nn.init.normal_(m.weight, mean=0, std=0.01)
-        m.bias.data.fill_(0)
-
-
-def fcn_module(inputsize, layer_size=128):
-    """
-    Creates a FCN submodule. Used in different attack components.
-    """
-    # print("FCN", inputsize)
-    fcn = nn.Sequential(
-        nn.Linear(inputsize, layer_size),
-        nn.ReLU(),
-        nn.Linear(layer_size, 64),
-        nn.ReLU(),
-    )
-    fcn.apply(init_weights)
-    return fcn
-
-
-def cnn_for_cnn_layeroutputs(input_shape):
-    """
-    Creates a CNN submodule for Conv Layer outputs
-    """
-    # print("CNN^2", input_shape)
-    dim1, dim2, dim3, dim4 = input_shape
-    cnn = nn.Sequential(
-        [
-            nn.Conv2d(dim4, dim4, kernel_size=(dim2, dim3), stride=(1, 1)),
-            nn.ReLU(),
-            nn.Flatten(),
-            nn.Dropout(0.2),
-            nn.Linear(_, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-        ]
-    )
-    cnn.apply(init_weights)
-    return cnn
-
-
 class ReshapeForGradConv(nn.Module):
     def forward(self, x):
         if x.dim() == 3:
@@ -81,22 +33,68 @@ class Print(nn.Module):
         return x
 
 
+def init_weights(m):
+    if type(m) == nn.Linear or type(m) == nn.Conv2d:
+        nn.init.normal_(m.weight, mean=0, std=0.01)
+        m.bias.data.fill_(0)
+
+
+def fcn_module(inputsize, layer_size=128):
+    """
+    Creates a FCN submodule. Used in different attack components.
+    """
+    fcn = nn.Sequential(
+        nn.Linear(inputsize, layer_size),
+        nn.ReLU(),
+        nn.Linear(layer_size, 64),
+        nn.ReLU(),
+    )
+    fcn.apply(init_weights)
+    return fcn
+
+
+def cnn_for_cnn_layeroutputs(input_shape):
+    """
+    Creates a CNN submodule for Conv Layer outputs
+    """
+    print("CNN 4 CNN")
+    dim1, dim2, dim3, dim4 = input_shape
+    cnn = nn.Sequential(
+        [
+            Print(),
+            nn.Conv2d(dim4, dim4, kernel_size=(dim2, dim3), stride=(1, 1)),
+            Print(),
+            nn.ReLU(),
+            nn.Flatten(),
+            Print(),
+            nn.Dropout(0.2),
+            nn.Linear(_, 1024),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+        ]
+    )
+    cnn.apply(init_weights)
+    return cnn
+
+
 def cnn_for_fcn_gradients(input_shape):
     """
     Creates a CNN submodule for Linear layer gradients.
     """
     dim1, dim2 = input_shape
     cnn = nn.Sequential(
-        # Print(),
         ReshapeForGradConv(),
         nn.Dropout(0.2),
-        # Print(),
         nn.Conv2d(1, 100, kernel_size=(1, dim2), stride=(1, 1)),
-        # Print(),
         nn.ReLU(),
         nn.Flatten(),
         nn.Dropout(0.2),
-        # Print(),
         nn.Linear(100 * dim1, 2024),
         nn.ReLU(),
         nn.Dropout(0.2),
@@ -113,13 +111,16 @@ def cnn_for_cnn_gradients(input_shape):
     """
     Creates a CNN submodule for Conv layer gradients
     """
-    # print("CNN^2 grad", input_shape)
+    print("CNN 4 CNN grads")
     dim2, dim3, dim4, dim1 = input_shape
     cnn = nn.Sequential(
+        Print(),
         nn.Conv2d(dim1, kernel_size=(dim2, dim3), stride=(1, 1), padding="same", name="cnn_grad_layer"),
+        Print(),
         nn.ReLU(),
-        nn.Flatten(name="flatten_layer"),
+        nn.Flatten(),
         nn.Dropout(0.2),
+        Print(),
         nn.Linear(_, 64),
         nn.ReLU(),
     )
@@ -150,9 +151,7 @@ class NasrAttack(nn.Module):
     ------
     device: torch.device() to use for training and testing
 
-    target_train_model: The target (classification) model that'll be used to train the attack model
-
-    target_test_model:  The target (classification) model to test privacy risk for
+    target_model: The target classification model that'll be attacked
 
     train_dataloader: Dataloader with samples for training
 
@@ -179,54 +178,57 @@ class NasrAttack(nn.Module):
     def __init__(
         self,
         device,
-        target_train_model,
-        target_test_model,
+        target_model,
         train_dataloader,
         test_dataloader,
-        layers_to_exploit=None,
-        gradients_to_exploit=None,
+        layers_to_exploit=[],
+        gradients_to_exploit=[],
         exploit_loss=True,
         exploit_label=True,
         optimizer=torch.optim.Adam,
         learning_rate=0.001,
         epochs=10,
+        batched_loss=False,
     ):
         super().__init__()
+        self.batched_loss = batched_loss
 
         self.device = device
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
+        self.train_shape = next(iter(self.train_dataloader[0]))[0].shape
 
         self.layers_to_exploit = layers_to_exploit
         self.gradients_to_exploit = gradients_to_exploit
         self.exploit_loss = exploit_loss
         self.exploit_label = exploit_label
 
-        self.n_labels = list(target_train_model.parameters())[-1].shape[0]
+        self.n_labels = list(target_model.parameters())[-1].shape[0]
 
-        self.create_attack_model(target_train_model)
+        self.create_attack_model(target_model)
 
         self.optimizer = optimizer(self.parameters(), lr=learning_rate)
         self.epochs = epochs
 
-        self.target_train_model = target_train_model.requires_grad_(False).eval()
-        self.target_test_model = target_test_model.requires_grad_(False).eval()
+        self.target_model = target_model.requires_grad_(False).eval()
+        self.out_name = f"{self.__class__.__name__}_{self.target_model.__class__.__name__}_{datetime.datetime.now()}"
 
-    def create_attack_model(self, target_train_model):
+    def create_attack_model(self, target_model):
         self.input_modules = nn.ModuleList()
         classifier_input_size = 0
 
-        if self.layers_to_exploit and len(self.layers_to_exploit):
+        if len(self.layers_to_exploit):
             layer_names_and_classes = [
                 (n, m.__class__.__name__)
-                for i, (n, m) in enumerate(target_train_model.named_modules())
+                for i, (n, m) in enumerate(target_model.named_modules())
                 if i in self.layers_to_exploit
             ]
             self.layers_to_exploit, layer_classes = transpose(layer_names_and_classes)
+            self.intermediate_feature_extractor = tx.Extractor(target_model, self.layers_to_exploit)
+
             example = next(iter(self.train_dataloader[0]))[0]
-            layer_shapes = [
-                v.shape[1] for v in tx.Extractor(target_train_model, self.layers_to_exploit)(example)[1].values()
-            ]
+            layer_shapes = [v.shape[1] for v in self.intermediate_feature_extractor(example)[1].values()]
+
             for shape, type in zip(layer_shapes, layer_classes):
                 requires_cnn = map(lambda i: i in type, CNN_COMPONENT_LIST)
                 if any(requires_cnn):
@@ -236,8 +238,8 @@ class NasrAttack(nn.Module):
                 self.input_modules.append(module)
                 classifier_input_size += 64
 
-        if self.gradients_to_exploit and len(self.gradients_to_exploit):
-            layers = list(target_train_model.modules())
+        if len(self.gradients_to_exploit):
+            layers = list(target_model.modules())
             self.grad_exploit_layers = []
             for l in self.gradients_to_exploit:
                 layer = layers[l]
@@ -276,58 +278,62 @@ class NasrAttack(nn.Module):
         self.classifier = classifier
         print(self)
 
-    def get_layer_outputs(self, model, features):
-        extractor = tx.Extractor(model, self.layers_to_exploit)
-        _, intermediate = extractor(features)
-        return list(intermediate.values())
-
     def get_labels(self, labels):
         return nn.functional.one_hot(labels, num_classes=self.n_labels).float()
 
-    def get_loss(self, model, features, labels):
-        return nn.functional.cross_entropy(model(features), labels)
-
     def compute_gradients(self, model, features, labels):
-        gradient_arr = []
+        gradients = []
         model.requires_grad_(True)
-        for feature, label in zip(features, labels):
-            loss = nn.functional.cross_entropy(model(feature[None, :]), label[None])
-            grads = torch.autograd.grad(loss, self.grad_exploit_layers)
-            gradient_arr.append(grads)
+        logits = model(features)
+        for l, label in enumerate(labels):
+            loss = nn.functional.cross_entropy(logits[None, l], label[None])
+            grads = torch.autograd.grad(loss, self.grad_exploit_layers, retain_graph=True)
+            gradients.append(grads)
         model.requires_grad_(False)
-        return gradient_arr
-
-    def get_gradients(self, model, features, labels):
-        gradient_arr = self.compute_gradients(model, features, labels)
-        return [torch.stack(grads) for grads in transpose(gradient_arr)]
+        return [torch.stack(grads) for grads in transpose(gradients)]
 
     def get_gradient_norms(self, model, features, labels):
-        gradient_arr = self.compute_gradients(model, features, labels)
-        return [torch.norm(grads[-1]) for grads in gradient_arr]
+        return [torch.norm(grads[-1]) for grads in self.compute_gradients(model, features, labels)]
 
     def forward(self, model, features, labels):
         i = 0
         attack_input = []
 
-        if self.layers_to_exploit and len(self.layers_to_exploit):
-            for layer_output in self.get_layer_outputs(model, features):
+        if len(self.gradients_to_exploit):
+            model.requires_grad_(True)
+        logits, intermediate_feature = self.intermediate_feature_extractor(features)
+
+        if len(self.layers_to_exploit):
+            for layer_output in intermediate_feature.values():
                 attack_input.append(self.input_modules[i](layer_output))
                 i += 1
 
-        if self.gradients_to_exploit and len(self.gradients_to_exploit):
-            for layer_gradients in self.get_gradients(model, features, labels):
-                attack_input.append(self.input_modules[i](layer_gradients))
+        individual_losses = []
+        for l, label in enumerate(labels):
+            individual_losses.append(nn.functional.cross_entropy(logits[None, l], label[None]))
+
+        if len(self.gradients_to_exploit):
+            gradients = [
+                torch.autograd.grad(loss, self.grad_exploit_layers, retain_graph=True) for loss in individual_losses
+            ]
+            gradients = [torch.stack(grads) for grads in transpose(gradients)]
+            for grads in gradients:
+                attack_input.append(self.input_modules[i](grads))
                 i += 1
+            model.requires_grad_(False)
 
         if self.exploit_loss:
-            loss = self.get_loss(model, features, labels)[None, None]
+            loss = torch.tensor(individual_losses, device=self.device).unsqueeze(-1)
+            if not self.batched_loss:
+                loss = loss.mean()[None, None]
             loss_feature = self.input_modules[i](loss)
-            loss_feature = torch.tile(loss_feature, (len(features), 1))
+            if not self.batched_loss:
+                loss_feature = torch.tile(loss_feature, (len(features), 1))
             attack_input.append(loss_feature)
             i += 1
 
         if self.exploit_label:
-            attack_input.append(self.input_modules[i](self.get_labels(labels)))
+            attack_input.append(self.input_modules[i](self.get_labels(torch.argmax(logits, axis=1))))
             i += 1
 
         return self.classifier(torch.cat(attack_input, axis=1))
@@ -342,8 +348,8 @@ class NasrAttack(nn.Module):
             nmfeatures, nmlabels = nonmembatch
 
             # Computing the membership probabilities
-            mprobs = self.forward(self.target_train_model, mfeatures.to(self.device), mlabels.to(self.device))
-            nonmprobs = self.forward(self.target_train_model, nmfeatures.to(self.device), nmlabels.to(self.device))
+            mprobs = self.forward(self.target_model, mfeatures.to(self.device), mlabels.to(self.device))
+            nonmprobs = self.forward(self.target_model, nmfeatures.to(self.device), nmlabels.to(self.device))
             probs = torch.cat((mprobs, nonmprobs)).cpu()
 
             target_ones = torch.ones(mprobs.shape, dtype=bool)
@@ -361,14 +367,13 @@ class NasrAttack(nn.Module):
         """
         assert self.classifier, "Attack model not initialized"
         best_state_dict = self.state_dict()
-        self.to(self.device)
-        self.target_train_model.to(self.device)
+        self.to(self.device).train()
 
         mtestset, nmtestset = self.test_dataloader
         member_loader, nonmember_loader = self.train_dataloader
 
         nmfeat, nmlbl = transpose(nonmember_loader)
-        preds = np.argmax(self.target_train_model(torch.cat(nmfeat).to(self.device)).cpu(), axis=1)
+        preds = np.argmax(self.target_model(torch.cat(nmfeat).to(self.device)).cpu(), axis=1)
         acc = accuracy_score(np.concatenate(nmlbl), preds.cpu())
         print("Target model test accuracy", acc)
 
@@ -377,8 +382,8 @@ class NasrAttack(nn.Module):
         for e in pbar:
             for (mfeatures, mlabels), (nmfeatures, nmlabels) in zip(member_loader, nonmember_loader):
                 self.optimizer.zero_grad()
-                moutputs = self.forward(self.target_train_model, mfeatures.to(self.device), mlabels.to(self.device))
-                nmoutputs = self.forward(self.target_train_model, nmfeatures.to(self.device), nmlabels.to(self.device))
+                moutputs = self.forward(self.target_model, mfeatures.to(self.device), mlabels.to(self.device))
+                nmoutputs = self.forward(self.target_model, nmfeatures.to(self.device), nmlabels.to(self.device))
 
                 memtrue = torch.ones(moutputs.shape, device=self.device)
                 nonmemtrue = torch.zeros(nmoutputs.shape, device=self.device)
@@ -390,9 +395,6 @@ class NasrAttack(nn.Module):
                 attackloss.backward()
                 self.optimizer.step()
 
-            pbar.write(f"{target.detach().squeeze().cpu().numpy()}")
-            pbar.write(f"{probs.detach().squeeze().cpu().numpy()}")
-
             attack_accuracy = self.attack_accuracy(mtestset, nmtestset)
             if attack_accuracy > best_accuracy:
                 best_accuracy = attack_accuracy
@@ -400,7 +402,7 @@ class NasrAttack(nn.Module):
 
             pbar.write(f"Epoch {e} : Attack test accuracy: {attack_accuracy:.3f}, Best accuracy : {best_accuracy:.3f}")
 
-        self.out_name = f"{self.__class__.__name__}_{self.target_train_model.__class__.__name__}_{best_accuracy:.3f}_{datetime.datetime.now()}"
+        self.out_name += f"_{best_accuracy:.3f}"
         self.load_state_dict(best_state_dict)
         torch.save(
             self.cpu().eval().requires_grad_(False).state_dict(),
@@ -411,46 +413,40 @@ class NasrAttack(nn.Module):
         """
         Test the attack model on dataset and save plots for visualization.
         """
-        self.to(self.device)
-        self.target_test_model.to(self.device)
+        self.to(self.device).eval()
 
         mtrainset, nmtrainset = self.test_dataloader
 
         mpreds, mlab, nmpreds, nmlab, mfeat, nmfeat, mtrue, nmtrue = [], [], [], [], [], [], [], []
         mgradnorm, nmgradnorm = [], []
 
-        self.grad_exploit_layers = []
-        layers = list(self.target_test_model.modules())
-        for l in self.gradients_to_exploit:
-            layer = layers[l]
-            assert any(
-                map(lambda i: i in layer.__class__.__name__, GRAD_LAYERS_LIST)
-            ), f"Only Linear & Conv layers are supported for gradient-based attacks"
-            self.grad_exploit_layers.append(layer.weight)
-
         for (mfeatures, mlabels) in mtrainset:
-            moutputs = self.forward(self.target_test_model, mfeatures.to(self.device), mlabels.to(self.device))
-            mgradientnorm = self.get_gradient_norms(
-                self.target_test_model, mfeatures.to(self.device), mlabels.to(self.device)
-            )
+            moutputs = self.forward(self.target_model, mfeatures.to(self.device), mlabels.to(self.device)).detach()
 
             mpreds.extend(moutputs.cpu().numpy())
             mlab.extend(mlabels.cpu().numpy())
             mfeat.extend(mfeatures.cpu().numpy())
-            mgradnorm.extend(mgradientnorm)
             mtrue.extend(np.ones(moutputs.shape))
 
+            if len(self.gradients_to_exploit):
+                mgradientnorm = self.get_gradient_norms(
+                    self.target_model, mfeatures.to(self.device), mlabels.to(self.device)
+                )
+                mgradnorm.extend(mgradientnorm)
+
         for (nmfeatures, nmlabels) in nmtrainset:
-            nmoutputs = self.forward(self.target_test_model, nmfeatures.to(self.device), nmlabels.to(self.device))
-            nmgradientnorm = self.get_gradient_norms(
-                self.target_test_model, nmfeatures.to(self.device), nmlabels.to(self.device)
-            )
+            nmoutputs = self.forward(self.target_model, nmfeatures.to(self.device), nmlabels.to(self.device)).detach()
 
             nmpreds.extend(nmoutputs.cpu().numpy())
             nmlab.extend(nmlabels.cpu().numpy())
             nmfeat.extend(nmfeatures.cpu().numpy())
-            nmgradnorm.extend(nmgradientnorm)
             nmtrue.extend(np.zeros(nmoutputs.shape))
+
+            if len(self.gradients_to_exploit):
+                nmgradientnorm = self.get_gradient_norms(
+                    self.target_model, nmfeatures.to(self.device), nmlabels.to(self.device)
+                )
+                nmgradnorm.extend(nmgradientnorm)
 
         target = np.concatenate((np.concatenate(mtrue), np.concatenate(nmtrue)))
         probs = np.concatenate((np.concatenate(mpreds), np.concatenate(nmpreds)))
@@ -505,77 +501,35 @@ class NasrAttack(nn.Module):
         plt.close()
 
         # Creates plot for gradient norm per label
-        xs = []
-        ys = []
-        for lab in unique_mem_lab:
-            gradnorm = []
-            for l, p in zip(mlab, mgradientnorm):
-                if l == lab:
-                    gradnorm.append(p.cpu().numpy())
-            xs.append(lab)
-            ys.append(np.mean(gradnorm))
+        if len(self.gradients_to_exploit):
+            xs = []
+            ys = []
+            for lab in unique_mem_lab:
+                gradnorm = []
+                for l, p in zip(mlab, mgradientnorm):
+                    if l == lab:
+                        gradnorm.append(p.cpu().numpy())
+                xs.append(lab)
+                ys.append(np.mean(gradnorm))
 
-        plt.plot(xs, ys, "g.", label="Training Data (Members)")
+            plt.plot(xs, ys, "g.", label="Training Data (Members)")
 
-        xs = []
-        ys = []
-        for lab in unique_nmem_lab:
-            gradnorm = []
-            for l, p in zip(nmlab, nmgradientnorm):
-                if l == lab:
-                    gradnorm.append(p.cpu().numpy())
-            xs.append(lab)
-            ys.append(np.mean(gradnorm))
-        plt.plot(xs, ys, "r.", label="Population Data (Non-Members)")
-        plt.title("Average Gradient Norms per Label")
-        plt.xlabel("Label")
-        plt.ylabel("Average Gradient Norm")
-        plt.legend(loc="upper left")
-        plt.savefig(f"output/{self.out_name}_gradient_norm.png")
-        plt.close()
-
-        # Collect data and creates histogram for each label separately
-        # for lab in range(len(unique_mem_lab)):
-        #     labs = []
-        #     for l, p in zip(mlab, mpreds):
-        #         if l == lab:
-        #             labs.append(p)
-
-        #     plt.hist(
-        #         np.array(labs).flatten(),
-        #         color="xkcd:blue",
-        #         alpha=0.7,
-        #         bins=20,
-        #         label="Training Data (Members)",
-        #         histtype="bar",
-        #         range=(0, 1),
-        #         weights=(np.ones_like(labs) / len(labs)),
-        #     )
-
-        #     labs = []
-        #     for l, p in zip(nmlab, nmpreds):
-        #         if l == lab:
-        #             labs.append(p)
-
-        #     plt.hist(
-        #         np.array(labs).flatten(),
-        #         color="xkcd:light blue",
-        #         alpha=0.7,
-        #         bins=20,
-        #         label="Population Data (Non-members)",
-        #         histtype="bar",
-        #         range=(0, 1),
-        #         weights=(np.ones_like(labs) / len(labs)),
-        #     )
-
-        #     plt.legend()
-        #     plt.xlabel("Membership Probability")
-        #     plt.ylabel("Fraction")
-
-        #     plt.title("Privacy Risk - Class " + str(lab))
-        #     plt.savefig(f"output/{self.out_name}_privacy_risk_label" + str(lab) + ".png")
-
-        #     plt.close()
+            xs = []
+            ys = []
+            for lab in unique_nmem_lab:
+                gradnorm = []
+                for l, p in zip(nmlab, nmgradientnorm):
+                    if l == lab:
+                        gradnorm.append(p.cpu().numpy())
+                xs.append(lab)
+                ys.append(np.mean(gradnorm))
+            plt.plot(xs, ys, "r.", label="Population Data (Non-Members)")
+            plt.title("Average Gradient Norms per Label")
+            plt.xlabel("Label")
+            plt.ylabel("Average Gradient Norm")
+            plt.legend(loc="upper left")
+            plt.savefig(f"output/{self.out_name}_gradient_norm.png")
+            plt.close()
 
 
 if __name__ == "__main__":
@@ -585,7 +539,6 @@ if __name__ == "__main__":
     from fltk.synthpriv.config import SynthPrivConfig
     from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
     from fltk.synthpriv.models.purchase_mlp import PurchaseMLP
-
     from tqdm import tqdm
 
     torch.backends.cudnn.benchmark = True
@@ -596,11 +549,9 @@ if __name__ == "__main__":
     cfg.init_logger(logging)
 
     print("loading target models")
-    train_model = PurchaseMLP()
-    train_model.load_state_dict(torch.load("models/model_client1_27_end.model"))
-    test_model = PurchaseMLP()
-    test_model.load_state_dict(torch.load("models/model_client1_100_end.model"))
-    for i, (name, mod) in enumerate(train_model.named_modules()):
+    target_model = PurchaseMLP()
+    target_model.load_state_dict(torch.load("models/model_client1_100_end.model"))
+    for i, (name, mod) in enumerate(target_model.named_modules()):
         print(i, name, mod.__class__.__name__)
 
     print("loading data")
@@ -636,12 +587,11 @@ if __name__ == "__main__":
     print("initalizing attack")
     attacker = NasrAttack(
         "cuda",
-        train_model,
-        test_model,
+        target_model,
         train_dataloader,
         test_dataloader,
-        layers_to_exploit=[15],
-        gradients_to_exploit=[14],
+        layers_to_exploit=[18],
+        gradients_to_exploit=[18],
         exploit_loss=True,
         exploit_label=True,
     )
