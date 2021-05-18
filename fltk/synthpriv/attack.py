@@ -187,11 +187,10 @@ class NasrAttack(nn.Module):
         exploit_label=True,
         optimizer=torch.optim.Adam,
         learning_rate=0.001,
-        epochs=10,
-        batched_loss=False,
+        epochs=30,
     ):
         super().__init__()
-        self.batched_loss = batched_loss
+        self.target_model = target_model.requires_grad_(False).eval()
 
         self.device = device
         self.train_dataloader = train_dataloader
@@ -205,26 +204,28 @@ class NasrAttack(nn.Module):
 
         self.n_labels = list(target_model.parameters())[-1].shape[0]
 
-        self.create_attack_model(target_model)
+        self.create_attack_model()
 
-        self.optimizer = optimizer(self.parameters(), lr=learning_rate)
+        self.optimizer = optimizer(
+            [p for n, p in self.named_parameters() if not "target_model" in n and not "feature_extractor" in n],
+            lr=learning_rate,
+        )
         self.epochs = epochs
 
-        self.target_model = target_model.requires_grad_(False).eval()
         self.out_name = f"{self.__class__.__name__}_{self.target_model.__class__.__name__}_{datetime.datetime.now()}"
 
-    def create_attack_model(self, target_model):
+    def create_attack_model(self):
         self.input_modules = nn.ModuleList()
         classifier_input_size = 0
 
         if len(self.layers_to_exploit):
             layer_names_and_classes = [
                 (n, m.__class__.__name__)
-                for i, (n, m) in enumerate(target_model.named_modules())
+                for i, (n, m) in enumerate(self.target_model.named_modules())
                 if i in self.layers_to_exploit
             ]
             self.layers_to_exploit, layer_classes = transpose(layer_names_and_classes)
-            self.intermediate_feature_extractor = tx.Extractor(target_model, self.layers_to_exploit)
+            self.intermediate_feature_extractor = tx.Extractor(self.target_model, self.layers_to_exploit)
 
             example = next(iter(self.train_dataloader[0]))[0]
             layer_shapes = [v.shape[1] for v in self.intermediate_feature_extractor(example)[1].values()]
@@ -239,7 +240,7 @@ class NasrAttack(nn.Module):
                 classifier_input_size += 64
 
         if len(self.gradients_to_exploit):
-            layers = list(target_model.modules())
+            layers = list(self.target_model.modules())
             self.grad_exploit_layers = []
             for l in self.gradients_to_exploit:
                 layer = layers[l]
@@ -278,9 +279,6 @@ class NasrAttack(nn.Module):
         self.classifier = classifier
         print(self)
 
-    def get_labels(self, labels):
-        return nn.functional.one_hot(labels, num_classes=self.n_labels).float()
-
     def compute_gradients(self, model, features, labels):
         gradients = []
         model.requires_grad_(True)
@@ -301,7 +299,11 @@ class NasrAttack(nn.Module):
 
         if len(self.gradients_to_exploit):
             model.requires_grad_(True)
-        logits, intermediate_feature = self.intermediate_feature_extractor(features)
+
+        if len(self.layers_to_exploit):
+            logits, intermediate_feature = self.intermediate_feature_extractor(features)
+        else:
+            logits = model(features)
 
         if len(self.layers_to_exploit):
             for layer_output in intermediate_feature.values():
@@ -323,17 +325,16 @@ class NasrAttack(nn.Module):
             model.requires_grad_(False)
 
         if self.exploit_loss:
-            loss = torch.tensor(individual_losses, device=self.device).unsqueeze(-1)
-            if not self.batched_loss:
-                loss = loss.mean()[None, None]
+            loss = torch.tensor(individual_losses, device=self.device).mean()[None, None]
             loss_feature = self.input_modules[i](loss)
-            if not self.batched_loss:
-                loss_feature = torch.tile(loss_feature, (len(features), 1))
+            loss_feature = torch.tile(loss_feature, (len(features), 1))
             attack_input.append(loss_feature)
             i += 1
 
         if self.exploit_label:
-            attack_input.append(self.input_modules[i](self.get_labels(torch.argmax(logits, axis=1))))
+            preds = torch.argmax(logits, axis=1)
+            preds = nn.functional.one_hot(preds, num_classes=self.n_labels).float()
+            attack_input.append(self.input_modules[i](preds))
             i += 1
 
         return self.classifier(torch.cat(attack_input, axis=1))
@@ -560,20 +561,18 @@ if __name__ == "__main__":
         member_loader = dataset.train_loader
         nonmember_loader = dataset.test_loader
 
-        test_frac = 0.25
-        num_batches = len(member_loader)
         member_train, nonmember_train, member_test, nonmember_test = [], [], [], []
-        for i, (features, labels) in enumerate(tqdm(member_loader)):
-            if i < test_frac * num_batches:
-                member_test.append((features, labels))
+        pbar = tqdm(zip(member_loader, nonmember_loader), desc="Preparing data...", total=20_000)
+        for (memfeat, memlabel), (nonmemfeat, nonmemlabel) in pbar:
+            if len(member_test) * len(memfeat) < 15_000:
+                member_test.append((memfeat, memlabel))
+                nonmember_test.append((nonmemfeat, nonmemlabel))
             else:
-                member_train.append((features, labels))
-        num_batches = len(nonmember_loader)
-        for i, (features, labels) in enumerate(tqdm(nonmember_loader)):
-            if i < test_frac * num_batches:
-                nonmember_test.append((features, labels))
-            else:
-                nonmember_train.append((features, labels))
+                member_train.append((memfeat, memlabel))
+                nonmember_train.append((nonmemfeat, nonmemlabel))
+            if len(member_train) * len(memfeat) > 5_000:
+                break
+            pbar.update(len(memfeat))
 
         train_dataloader = member_train, nonmember_train
         test_dataloader = member_test, nonmember_test
@@ -590,8 +589,8 @@ if __name__ == "__main__":
         target_model,
         train_dataloader,
         test_dataloader,
-        layers_to_exploit=[18],
-        gradients_to_exploit=[18],
+        layers_to_exploit=[],
+        gradients_to_exploit=[],
         exploit_loss=True,
         exploit_label=True,
     )
