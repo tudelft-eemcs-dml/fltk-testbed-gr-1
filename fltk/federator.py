@@ -124,7 +124,6 @@ class Federator:
                 else:
                     logging.info(f"Waiting for {res[0]}")
                     all_ready = False
-
             time.sleep(2)
         logging.info("All clients are ready")
 

@@ -6,7 +6,7 @@ class AdultMLP(nn.Module):
         super(AdultMLP, self).__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(108, 128),
+            nn.Linear(11, 128),
             nn.ReLU(),
             nn.BatchNorm1d(128),
             nn.Dropout(p=0.25),

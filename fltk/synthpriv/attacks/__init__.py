@@ -1,1 +1,1 @@
-from .nasr import NasrAttack
+from .nasr import NasrAttack, UnsupervisedNasrAttack

@@ -1,17 +1,23 @@
+import random
+
 import torch
 
 SEED = 1
 torch.manual_seed(SEED)
 
+from copy import deepcopy
+
 from fltk.datasets.distributed.cifar10 import DistCIFAR10Dataset
 from fltk.datasets.distributed.cifar100 import DistCIFAR100Dataset
 from fltk.synthpriv.datasets.adult import DistAdultDataset
 from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
+from fltk.synthpriv.datasets.synthetic import SyntheticDataset
 from fltk.synthpriv.datasets.texas import DistTexasDataset
 from fltk.synthpriv.models.adult_mlp import AdultMLP
 from fltk.synthpriv.models.purchase_mlp import PurchaseMLP
 from fltk.synthpriv.models.texas_mlp import TexasMLP
 from fltk.util.base_config import BareConfig
+import torchvision
 
 
 class SynthPrivConfig(BareConfig):
@@ -21,26 +27,34 @@ class SynthPrivConfig(BareConfig):
         self.available_nets["AdultMLP"] = AdultMLP
         self.available_nets["TexasMLP"] = TexasMLP
         self.available_nets["PurchaseMLP"] = PurchaseMLP
+        self.available_nets["DenseNet"] = torchvision.models.densenet121
+        self.available_nets["AlexNet"] = torchvision.models.alexnet
+        self.available_nets["PurchaseMLP"] = PurchaseMLP
         self.optimizer = torch.optim.Adam
         self.weight_decay = 0
         self.lr = 0.001
         self.batch_size = 64
         self.loss_function = torch.nn.CrossEntropyLoss
         self.save_model = True
+        self.port = f"{random.randint(5000, 50000)}"
 
-    def get_dataset(self):
-        if self.dataset_name == "adult":
+    def get_dataset(self, device, rank):
+        if "adult" in self.dataset_name.lower():
             self.dataset = DistAdultDataset
-        elif self.dataset_name == "texas":
+        elif "texas" in self.dataset_name.lower():
             self.dataset = DistTexasDataset
-        elif self.dataset_name == "purchase":
+        elif "purchase" in self.dataset_name.lower():
             self.dataset = DistPurchaseDataset
-        elif self.dataset_name == "cifar10":
-            self.dataset = DistCIFAR10Dataset
-        elif self.dataset_name == "cifar100":
+        elif "cifar100" in self.dataset_name.lower():
             self.dataset = DistCIFAR100Dataset
+        elif "cifar10" in self.dataset_name.lower():
+            self.dataset = DistCIFAR10Dataset
         else:
             raise Exception(f"Dataset name {self.dataset_name} not recognized...")
+
+        if "synth" in self.dataset_name.lower():
+            return SyntheticDataset(self.dataset(self), self, device, rank, model="imle", sigma=1.0, target_epsilon=5)
+
         return self.dataset(self)
 
     def merge_yaml(self, cfg={}):

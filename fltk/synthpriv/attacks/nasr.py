@@ -774,4 +774,4 @@ class UnsupervisedNasrAttack(NasrAttack):
         target = np.concatenate((np.concatenate(mtrue), np.concatenate(nmtrue)))
         probs = np.concatenate((np.concatenate(mpreds), np.concatenate(nmpreds)))
 
-        self.plot(mpreds, nmpreds, target, probs, mlab, nmlab, mgradientnorm, nmgradientnorm)
+        self.plot(mpreds, nmpreds, target, probs, mlab, nmlab, mgradnorm, nmgradnorm)
