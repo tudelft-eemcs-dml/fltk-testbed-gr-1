@@ -4,3 +4,5 @@ from .fashion_mnist_cnn import FashionMNISTCNN
 from .fashion_mnist_resnet import FashionMNISTResNet
 from .cifar_10_resnet import Cifar10ResNet
 from .cifar_100_vgg import Cifar100VGG
+from .cifar_100_densenet import Cifar100DenseNet
+from .cifar_100_alexnet import Cifar100AlexNet

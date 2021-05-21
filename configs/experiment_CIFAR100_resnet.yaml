@@ -1,0 +1,19 @@
+---
+# Experiment configuration
+total_epochs: 30
+epochs_per_cycle: 1
+wait_for_clients: true
+net: Cifar100ResNet
+dataset: cifar100
+# Use cuda is available; setting to false will force CPU
+cuda: true
+experiment_prefix: "cifar_100_resnet"
+output_location: "output"
+tensor_board_active: true
+clients_per_round: 2
+system:
+  federator:
+    hostname: "localhost"
+    nic: "lo"
+  clients:
+    amount: 2

@@ -1,7 +1,8 @@
 import torch
 import json
 
-from fltk.nets import Cifar10CNN, FashionMNISTCNN, Cifar100ResNet, FashionMNISTResNet, Cifar10ResNet, Cifar100VGG
+from fltk.nets import Cifar10CNN, FashionMNISTCNN, Cifar100ResNet, FashionMNISTResNet, Cifar10ResNet, \
+    Cifar100VGG, Cifar100DenseNet, Cifar100AlexNet
 
 SEED = 1
 torch.manual_seed(SEED)
@@ -52,6 +53,8 @@ class BareConfig:
             "Cifar10ResNet": Cifar10ResNet,
             "FashionMNISTCNN": FashionMNISTCNN,
             "FashionMNISTResNet": FashionMNISTResNet,
+            "Cifar100DenseNet": Cifar100DenseNet,
+            "Cifar100AlexNet": Cifar100AlexNet
         }
         self.net = None
         self.set_net_by_name("Cifar10CNN")
