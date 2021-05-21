@@ -2,8 +2,8 @@
 import torch
 import torch.nn as nn
 
-class Block(nn.Module):
-    def __init__(self, in_channels=64, out_channels, stride=1, num_classes=100) -> None:
+class Cifar100AlexNet(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, num_classes=100) -> None:
         super().__init__()
 
         self.features = nn.Sequential(
@@ -38,6 +38,3 @@ class Block(nn.Module):
         x = torch.flatten(x, 1)
         x = self.classifier(x)
         return x
-
-class Cifar100AlexNet(nn.Module):
-    def __init_subclass__(cls, Block, num_classes=100):
