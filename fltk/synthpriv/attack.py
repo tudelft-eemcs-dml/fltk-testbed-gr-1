@@ -546,41 +546,51 @@ if __name__ == "__main__":
     if not len(sys.argv) == 3:
         print("Fill in the args please")
 
-    dataset = sys.argv[1]
+    selected_dataset = sys.argv[1]
     target_model_loc = sys.argv[2]
 
-    if dataset not in implemented_datasets:
+    if selected_dataset not in implemented_datasets:
         print("This dataset is not implemented yet, please choose from the following values:")
         print(implemented_datasets)
 
     import yaml
     from fltk.synthpriv.config import SynthPrivConfig
-    from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
     from fltk.synthpriv.models.purchase_mlp import PurchaseMLP
+    from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
 
-    from fltk.datasets.cifar100 import CIFAR100Dataset
     from fltk.synthpriv.models.cifar_100_densenet import Cifar100DenseNet
+    from fltk.datasets.cifar100 import CIFAR100Dataset
     from tqdm import tqdm
+
 
     torch.backends.cudnn.benchmark = True
 
     cfg = SynthPrivConfig()
-    yaml_data = yaml.load(configs[dataset]["data_location"], Loader=yaml.FullLoader)
+    yaml_data = yaml.load(configs[selected_dataset]["data_location"], Loader=yaml.FullLoader)
     cfg.merge_yaml(yaml_data)
     cfg.init_logger(logging)
 
     print("loading target models")
-    target_model = Cifar100DenseNet()
+    if selected_dataset == implemented_datasets[0]:
+        target_model = PurchaseMLP()
+        dataset = DistPurchaseDataset(cfg)
+    elif selected_dataset == implemented_datasets[1]:
+        target_model = Cifar100DenseNet()
+        dataset = CIFAR100Dataset(cfg)
+    elif selected_dataset == implemented_datasets[2]:
+        target_model = Cifar100DenseNet()
+        dataset = CIFAR100Dataset(cfg)
+
     target_model.load_state_dict(torch.load(target_model_loc))
     for i, (name, mod) in enumerate(target_model.named_modules()):
         print(i, name, mod.__class__.__name__)
 
     print("loading data")
     # if not os.path.exists("data/nasr-attack-train.pkl"):
-    dataset = CIFAR100Dataset(cfg)
     member_loader = dataset.train_loader
     nonmember_loader = dataset.test_loader
 
+    
     member_train, nonmember_train, member_test, nonmember_test = [], [], [], []
     pbar = tqdm(zip(member_loader, nonmember_loader), desc="Preparing data...", total=20_000)
     for (memfeat, memlabel), (nonmemfeat, nonmemlabel) in pbar:
