@@ -1,11 +1,18 @@
 import logging
 import os
+import datetime
 
 import joblib
+import numpy as np
 import torch
 import yaml
 from matplotlib import pyplot as plt
 from torch import nn
+from itertools import zip_longest
+import torchextractor as tx
+from sklearn.metrics import accuracy_score, auc, roc_curve
+
+
 
 from fltk.synthpriv.attacks import NasrAttack, UnsupervisedNasrAttack
 from fltk.synthpriv.config import SynthPrivConfig
@@ -174,18 +181,18 @@ class NasrAttack(nn.Module):
     """
 
     def __init__(
-        self,
-        device,
-        target_model,
-        train_dataloader,
-        test_dataloader,
-        layers_to_exploit=[],
-        gradients_to_exploit=[],
-        exploit_loss=True,
-        exploit_label=True,
-        optimizer=torch.optim.Adam,
-        learning_rate=0.001,
-        epochs=30,
+            self,
+            device,
+            target_model,
+            train_dataloader,
+            test_dataloader,
+            layers_to_exploit=[],
+            gradients_to_exploit=[],
+            exploit_loss=True,
+            exploit_label=True,
+            optimizer=torch.optim.Adam,
+            learning_rate=0.001,
+            epochs=30,
     ):
         super().__init__()
         self.target_model = target_model.requires_grad_(False).eval()
@@ -535,7 +542,7 @@ if __name__ == "__main__":
     import logging
     import sys
 
-    implemented_datasets = ["purchase", "texas", "cifar"]
+    implemented_datasets = ["purchase", "texas", "cifar", "adult"]
     configs = {
         "purchase": {"data_location": "fltk/synthpriv/experiments/purchase.yaml"},
         "texas": {"data_location": "fltk/synthpriv/experiments/texas.yaml"},
@@ -553,14 +560,20 @@ if __name__ == "__main__":
 
     import yaml
     from fltk.synthpriv.config import SynthPrivConfig
-    from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
+
     from fltk.synthpriv.models.purchase_mlp import PurchaseMLP
     from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
 
-    from fltk.synthpriv.models.cifar_100_densenet import Cifar100DenseNet
-    from fltk.datasets.cifar100 import CIFAR100Dataset
-    from tqdm import tqdm
+    from fltk.synthpriv.models.texas_mlp import TexasMLP
+    from fltk.synthpriv.datasets.texas import DistTexasDataset
 
+    from fltk.synthpriv.models.cifar_100_densenet import Cifar100DenseNet
+    from fltk.synthpriv.datasets.cifar import DistCifarDataset
+
+    from fltk.synthpriv.models.adult_mlp import AdultMLP
+    from fltk.synthpriv.datasets.adult import DistAdultDataset
+
+    from tqdm import tqdm
 
     torch.backends.cudnn.benchmark = True
 
@@ -574,11 +587,14 @@ if __name__ == "__main__":
         target_model = PurchaseMLP()
         dataset = DistPurchaseDataset(cfg)
     elif selected_dataset == implemented_datasets[1]:
-        target_model = Cifar100DenseNet()
-        dataset = CIFAR100Dataset(cfg)
+        target_model = TexasMLP()
+        dataset = DistTexasDataset(cfg)
     elif selected_dataset == implemented_datasets[2]:
         target_model = Cifar100DenseNet()
-        dataset = CIFAR100Dataset(cfg)
+        dataset = DistCifarDataset(cfg)
+    elif selected_dataset == implemented_datasets[3]:
+        target_model = AdultMLP()
+        dataset = DistAdultDataset(cfg)
 
     target_model.load_state_dict(torch.load(target_model_loc))
     for i, (name, mod) in enumerate(target_model.named_modules()):
