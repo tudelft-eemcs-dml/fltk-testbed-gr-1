@@ -108,7 +108,7 @@ class Client:
         self.args.distributed = True
         self.args.rank = self.rank
         self.args.world_size = self.world_size
-        self.dataset = self.args.get_dataset()
+        self.dataset = self.args.get_dataset(self.device, self.rank)
         self.finished_init = True
         logging.info("Done with init")
 
@@ -199,7 +199,7 @@ class Client:
         self.net = self.net.train().to(self.device)
 
         # save model
-        if self.args.should_save_model(epoch) and self.id == "client1":
+        if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0 and self.id == "client1":
             self.save_model(epoch, self.args.get_epoch_save_start_suffix())
 
         running_loss = 0.0
@@ -231,7 +231,7 @@ class Client:
         self.scheduler.step()
 
         # save model
-        if self.args.should_save_model(epoch) and self.id == "client1":
+        if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0 and self.id == "client1":
             self.save_model(epoch, self.args.get_epoch_save_end_suffix())
 
         return final_running_loss, self.get_nn_parameters()
@@ -245,10 +245,10 @@ class Client:
         pred_ = []
         loss = 0.0
         with torch.no_grad():
-            for (images, labels) in self.dataset.get_test_loader():
-                images, labels = images.to(self.device), labels.to(self.device)
+            for (batch, labels) in self.dataset.get_test_loader():
+                batch, labels = batch.to(self.device), labels.to(self.device)
 
-                outputs = self.net(images)
+                outputs = self.net(batch)
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
@@ -316,7 +316,10 @@ class Client:
 
         full_save_path = os.path.join(
             self.args.get_save_model_folder_path(),
-            "model_" + str(self.id) + "_" + str(epoch) + "_" + suffix + ".model",
+            "_".join(
+                [self.net.__class__.__name__, self.dataset.__class__.__name__, str(self.id), str(epoch + 1), suffix]
+            )
+            + ".model",
         )
         torch.save(self.get_nn_parameters(), full_save_path)
 

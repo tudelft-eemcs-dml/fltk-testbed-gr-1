@@ -24,7 +24,7 @@ columns = [
 
 continuous = [
     "age",
-    "fnlwgt",
+    # "fnlwgt",
     "education-num",
     "capital-gain",
     "capital-loss",
@@ -32,42 +32,73 @@ continuous = [
 ]
 
 
-def load_adult():
-    train_df = pd.read_csv("data/adult/adult.data", sep=", ", index_col=False, header=None)
-    train_df.columns = columns  # set column names
-    scaler = StandardScaler().fit(train_df[continuous])
-    train_df[continuous] = scaler.transform(train_df[continuous])  # scale continuous column to zero mean, unit variance
-    train_labels = LabelEncoder().fit_transform(train_df.income)  # income level to 0 or 1
-    train_df = train_df.drop(columns="income")
-    train_df = pd.get_dummies(train_df)  # one-hot encode categorical variables
-
-    test_df = pd.read_csv("data/adult/adult.test", sep=", ", index_col=False, header=None)
-    test_df.columns = columns
-    test_df.income = test_df.income.apply(lambda x: x.replace(".", ""))  # test data has periods at end for some reason
-    test_df[continuous] = scaler.transform(test_df[continuous])
-    test_labels = LabelEncoder().fit_transform(test_df.income)
-    test_df = test_df.drop(columns="income")
-    test_df = pd.get_dummies(test_df)
-    test_df[list(set(train_df.columns) - set(test_df.columns))] = np.zeros(len(test_df))  # add in missing columns
-    test_df = test_df[train_df.columns]  # reorder columns to match training data
-
-    return train_df, train_labels, test_df, test_labels
-
-
 class DistAdultDataset(BaseDistDataset):
     def __init__(self, args):
-        train_df, train_labels, test_df, test_labels = load_adult()
+        self.train_df, self.train_labels, self.test_df, self.test_labels = self.load()
         super(DistAdultDataset, self).__init__(
             args=args,
             name="Adult",
-            train_datset=DataframeDataset(train_df, train_labels),
-            test_dataset=DataframeDataset(test_df, test_labels),
+            train_datset=DataframeDataset(self.train_df, self.train_labels),
+            test_dataset=DataframeDataset(self.test_df, self.test_labels),
         )
 
+    def preprocess(self, df):
+        salary_map = {"<=50K": 1, "<=50K.": 1, ">50K": 0, ">50K.": 0}
+        df["income"] = df["income"].map(salary_map).astype(int)
+        df["sex"] = df["sex"].map({"Male": 1, "Female": 0}).astype(int)
+        df["native-country"] = df["native-country"].replace("?", np.nan)
+        df["workclass"] = df["workclass"].replace("?", np.nan)
+        df["occupation"] = df["occupation"].replace("?", np.nan)
+        df.dropna(how="any", inplace=True)
 
-if __name__ == "__main__":
-    train_df, train_labels, test_df, test_labels = load_adult()
-    print(train_df)
-    print(train_labels)
-    print(test_df)
-    print(test_labels)
+        df.loc[df["native-country"] != "United-States", "native-country"] = "Non-US"
+        df.loc[df["native-country"] == "United-States", "native-country"] = "US"
+        df["native-country"] = df["native-country"].map({"US": 1, "Non-US": 0}).astype(int)
+
+        df["marital-status"] = df["marital-status"].replace(
+            ["Divorced", "Married-spouse-absent", "Never-married", "Separated", "Widowed"], "Single"
+        )
+        df["marital-status"] = df["marital-status"].replace(["Married-AF-spouse", "Married-civ-spouse"], "Couple")
+        df["marital-status"] = df["marital-status"].map({"Couple": 0, "Single": 1})
+        rel_map = {"Unmarried": 0, "Wife": 1, "Husband": 2, "Not-in-family": 3, "Own-child": 4, "Other-relative": 5}
+        df["relationship"] = df["relationship"].map(rel_map)
+
+        df["race"] = df["race"].map(
+            {"White": 0, "Amer-Indian-Eskimo": 1, "Asian-Pac-Islander": 2, "Black": 3, "Other": 4}
+        )
+
+        def f(x):
+            if x["workclass"] == "Federal-gov" or x["workclass"] == "Local-gov" or x["workclass"] == "State-gov":
+                return 0
+            elif x["workclass"] == "Private":
+                return 1
+            elif x["workclass"] == "Self-emp-inc" or x["workclass"] == "Self-emp-not-inc":
+                return 2
+            else:
+                return 3
+
+        df["workclass"] = df.apply(f, axis=1)
+        df.drop(labels=["education", "occupation"], axis=1, inplace=True)
+
+        df.loc[(df["capital-gain"] > 0), "capital-gain"] = 1
+        df.loc[(df["capital-gain"] == 0, "capital-gain")] = 0
+        df.loc[(df["capital-loss"] > 0), "capital-loss"] = 1
+        df.loc[(df["capital-loss"] == 0, "capital-loss")] = 0
+
+        df.drop(["fnlwgt"], axis=1, inplace=True)
+        return df.reset_index(drop=True)
+
+    def load(self):
+        train_df = pd.read_csv("data/adult/adult.data", sep=", ", index_col=False, header=None)
+        train_df.columns = columns
+        train_df = self.preprocess(train_df)
+        train_labels = train_df.income
+        train_df = train_df.drop(columns="income")
+
+        test_df = pd.read_csv("data/adult/adult.test", sep=", ", index_col=False, header=None)
+        test_df.columns = columns
+        test_df = self.preprocess(test_df)
+        test_labels = test_df.income
+        test_df = test_df.drop(columns="income")
+
+        return train_df, train_labels, test_df, test_labels

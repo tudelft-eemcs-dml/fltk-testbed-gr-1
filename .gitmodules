@@ -1,0 +1,6 @@
+[submodule "fltk/synthpriv/synthetic"]
+	path = fltk/synthpriv/synthetic
+	url = https://github.com/BorealisAI/private-data-generation.git
+[submodule "fltk/synthpriv/synthetic/models/IMLE"]
+	path = fltk/synthpriv/synthetic
+	url = https://github.com/BorealisAI/IMLE.git

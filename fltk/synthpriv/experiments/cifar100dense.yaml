@@ -1,0 +1,21 @@
+---
+# Experiment configuration
+total_epochs: 100
+epochs_per_cycle: 1
+wait_for_clients: true
+batch_size: 64
+weight_decay: 0.0005
+net: DenseNet
+dataset: cifar100
+# Use cuda is available; setting to false will force CPU
+cuda: true
+experiment_prefix: "cifar100_densenet"
+output_location: "output"
+tensor_board_active: true
+clients_per_round: 1
+system:
+  federator:
+    hostname: "localhost"
+    nic: "lo"
+  clients:
+    amount: 1

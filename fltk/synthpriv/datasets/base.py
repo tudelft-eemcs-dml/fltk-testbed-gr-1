@@ -69,11 +69,11 @@ class DataframeDataset(Dataset):
 
     def __init__(self, df: pd.DataFrame, lbls: np.array):
         super().__init__()
-        self.df = df
-        self.lbls = lbls
+        self.data = torch.tensor(df.values).float()
+        self.lbls = torch.tensor(lbls.values).long().squeeze()
 
     def __len__(self):
-        return len(self.df)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        return torch.tensor(self.df.loc[idx]).float(), torch.tensor(self.lbls[idx])
+        return self.data[idx], self.lbls[idx]
