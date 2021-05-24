@@ -547,7 +547,9 @@ if __name__ == "__main__":
     configs = {
         "purchase": {"data_location": "fltk/synthpriv/experiments/purchase.yaml"},
         "texas": {"data_location": "fltk/synthpriv/experiments/texas.yaml"},
-        "cifar": {"data_location": "fltk/synthpriv/experiments/cifar100.yaml"}
+        "cifar-dense": {"data_location": "fltk/synthpriv/experiments/cifar100dense.yaml"},
+        "cifar-alex": {"data_location": "fltk/synthpriv/experiments/cifar100alex.yaml"},
+        "adult": {"data_location": "fltk/synthpriv/experiments/adult.yaml"}
     }
     if not len(sys.argv) == 3:
         print("Fill in the args please")
