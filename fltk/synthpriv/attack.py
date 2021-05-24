@@ -569,7 +569,7 @@ if __name__ == "__main__":
     from fltk.synthpriv.datasets.texas import DistTexasDataset
 
     from fltk.synthpriv.models.cifar_100_densenet import Cifar100DenseNet
-    from fltk.synthpriv.datasets.cifar import DistCifarDataset
+    from fltk.synthpriv.datasets.cifar100 import CIFAR100Dataset
 
     from fltk.synthpriv.models.adult_mlp import AdultMLP
     from fltk.synthpriv.datasets.adult import DistAdultDataset
@@ -592,7 +592,7 @@ if __name__ == "__main__":
         dataset = DistTexasDataset(cfg)
     elif selected_dataset == implemented_datasets[2]:
         target_model = Cifar100DenseNet()
-        dataset = DistCifarDataset(cfg)
+        dataset = CIFAR100Dataset(cfg)
     elif selected_dataset == implemented_datasets[3]:
         target_model = AdultMLP()
         dataset = DistAdultDataset(cfg)
