@@ -543,7 +543,7 @@ if __name__ == "__main__":
     import logging
     import sys
 
-    implemented_datasets = ["purchase", "texas", "cifar", "adult"]
+    implemented_datasets = ["purchase", "texas", "cifar-dense", "cifar-alex", "adult"]
     configs = {
         "purchase": {"data_location": "fltk/synthpriv/experiments/purchase.yaml"},
         "texas": {"data_location": "fltk/synthpriv/experiments/texas.yaml"},
@@ -569,6 +569,7 @@ if __name__ == "__main__":
     from fltk.synthpriv.datasets.texas import DistTexasDataset
 
     from torchvision.models.densenet import densenet121 as Cifar100DenseNet
+    from torchvision.models.alexnet import alexnet
     from fltk.synthpriv.datasets.cifar import DistCifarDataset
 
     from fltk.synthpriv.models.adult_mlp import AdultMLP
@@ -594,6 +595,9 @@ if __name__ == "__main__":
         target_model = Cifar100DenseNet()
         dataset = DistCifarDataset(cfg)
     elif selected_dataset == implemented_datasets[3]:
+        target_model = alexnet()
+        dataset = DistCifarDataset(cfg)
+    elif selected_dataset == implemented_datasets[4]:
         target_model = AdultMLP()
         dataset = DistAdultDataset(cfg)
 
