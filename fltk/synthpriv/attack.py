@@ -568,7 +568,7 @@ if __name__ == "__main__":
     from fltk.synthpriv.models.texas_mlp import TexasMLP
     from fltk.synthpriv.datasets.texas import DistTexasDataset
 
-    from fltk.synthpriv.models.cifar_100_densenet import Cifar100DenseNet
+    from torchvision.models.densenet import densenet121 as Cifar100DenseNet
     from fltk.synthpriv.datasets.cifar100 import CIFAR100Dataset
 
     from fltk.synthpriv.models.adult_mlp import AdultMLP
