@@ -2,10 +2,8 @@
 Membership inference attack based on https://github.com/privacytrustlab/ml_privacy_meter/blob/master/ml_privacy_meter/attack/meminf.py
 """
 import datetime
-import os
 from itertools import zip_longest
 
-import joblib
 import matplotlib
 
 matplotlib.use("Agg")
@@ -193,7 +191,7 @@ class NasrAttack(nn.Module):
         epochs=30,
     ):
         super().__init__()
-        self.target_model = target_model.requires_grad_(False).eval()
+        self.target_model = target_model.requires_grad_(False)
 
         self.device = device
         self.train_dataloader = train_dataloader
@@ -280,7 +278,7 @@ class NasrAttack(nn.Module):
         )
         classifier.apply(init_weights)
         self.classifier = classifier
-        print(self)
+        # print(self)
 
     def compute_gradients(self, model, features, labels):
         gradients = []
@@ -370,7 +368,12 @@ class NasrAttack(nn.Module):
         Trains the attack model
         """
         best_state_dict = self.state_dict()
-        self.to(self.device).train()
+        self.to(self.device)
+        self.input_modules.train()
+        self.classifier.train()
+        self.target_model.eval()
+        if self.intermediate_feature_extractor:
+            self.intermediate_feature_extractor.eval()
 
         mtestset, nmtestset = self.test_dataloader
         member_loader, nonmember_loader = self.train_dataloader
@@ -416,7 +419,12 @@ class NasrAttack(nn.Module):
         """
         Test the attack model on dataset and save plots for visualization.
         """
-        self.to(self.device).eval()
+        self.to(self.device)
+        self.input_modules.eval()
+        self.classifier.eval()
+        self.target_model.eval()
+        if self.intermediate_feature_extractor:
+            self.intermediate_feature_extractor.eval()
 
         mtrainset, nmtrainset = self.test_dataloader
 
@@ -454,7 +462,7 @@ class NasrAttack(nn.Module):
         target = np.concatenate((np.concatenate(mtrue), np.concatenate(nmtrue)))
         probs = np.concatenate((np.concatenate(mpreds), np.concatenate(nmpreds)))
 
-        self.plot(mpreds, nmpreds, target, probs, mlab, nmlab, mgradientnorm, nmgradientnorm)
+        self.plot(mpreds, nmpreds, target, probs, mlab, nmlab, mgradnorm, nmgradnorm)
 
     def plot(self, mpreds, nmpreds, target, probs, mlab, nmlab, mgradientnorm, nmgradientnorm):
         font = {"weight": "bold", "size": 10}
@@ -519,6 +527,7 @@ class NasrAttack(nn.Module):
                 ys.append(np.mean(gradnorm))
 
             plt.plot(xs, ys, "g.", label="Training Data (Members)")
+            plt.hlines(np.mean(ys), np.min(xs), np.max(xs), color="g", label="Members mean")
 
             xs = []
             ys = []
@@ -530,6 +539,7 @@ class NasrAttack(nn.Module):
                 xs.append(lab)
                 ys.append(np.mean(gradnorm))
             plt.plot(xs, ys, "r.", label="Population Data (Non-Members)")
+            plt.hlines(np.mean(ys), np.min(xs), np.max(xs), color="r", label="Non-members mean")
             plt.title("Average Gradient Norms per Label")
             plt.xlabel("Label")
             plt.ylabel("Average Gradient Norm")
@@ -669,7 +679,13 @@ class UnsupervisedNasrAttack(NasrAttack):
         Trains the attack model
         """
         best_state_dict = self.state_dict()
-        self.to(self.device).train()
+        self.to(self.device)
+        self.input_modules.train()
+        self.classifier.train()
+        self.decoder.train()
+        self.target_model.eval()
+        if self.intermediate_feature_extractor:
+            self.intermediate_feature_extractor.eval()
 
         mtestset, nmtestset = self.test_dataloader
 
@@ -722,7 +738,13 @@ class UnsupervisedNasrAttack(NasrAttack):
         """
         Test the attack model on dataset and save plots for visualization.
         """
-        self.to(self.device).eval()
+        self.to(self.device)
+        self.input_modules.eval()
+        self.classifier.eval()
+        self.decoder.eval()
+        self.target_model.eval()
+        if self.intermediate_feature_extractor:
+            self.intermediate_feature_extractor.eval()
 
         mtrainset, nmtrainset = self.test_dataloader
 

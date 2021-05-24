@@ -32,6 +32,7 @@ class BaseDistDataset(DistDataset):
             num_workers=self.n_workers,
             prefetch_factor=int(self.args.batch_size / self.n_workers),
             pin_memory=True,
+            shuffle=True
         )
 
     def init_test_dataset(self):
@@ -47,6 +48,7 @@ class BaseDistDataset(DistDataset):
             num_workers=self.n_workers,
             prefetch_factor=int(self.args.batch_size / self.n_workers),
             pin_memory=True,
+            shuffle=True
         )
 
     def load_train_dataset(self):
@@ -70,7 +72,7 @@ class DataframeDataset(Dataset):
     def __init__(self, df: pd.DataFrame, lbls: np.array):
         super().__init__()
         self.data = torch.tensor(df.values).float()
-        self.lbls = torch.tensor(lbls.values).long().squeeze()
+        self.lbls = torch.tensor(lbls).long().squeeze()
 
     def __len__(self):
         return len(self.data)

@@ -1,5 +1,6 @@
 import logging
 import time
+import traceback
 from pathlib import Path
 from typing import List
 
@@ -17,7 +18,11 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def _call_method(method, rref, *args, **kwargs):
-    return method(rref.local_value(), *args, **kwargs)
+    try:
+        return method(rref.local_value(), *args, **kwargs)
+    except Exception:
+        print("Exception on: ", rref.owner())
+        print(traceback.format_exc())
 
 
 def _remote_method(method, rref, *args, **kwargs):
@@ -150,13 +155,20 @@ class Federator:
                 "accuracy", epoch_data.accuracy, self.epoch_counter * res[0].data_size  # for every 1000 minibatches
             )
 
-            client_weights.append(weights)
+            client_weights.append({n: p.cuda(non_blocking=True) for n, p in weights.items()})
         updated_model = average_nn_parameters(client_weights)
 
         responses = []
         for client in self.clients:
             responses.append(
-                (client, _remote_method_async(Client.update_nn_parameters, client.ref, new_params=updated_model))
+                (
+                    client,
+                    _remote_method_async(
+                        Client.update_nn_parameters,
+                        client.ref,
+                        new_params={n: p.cpu() for n, p in updated_model.items()},
+                    ),
+                )
             )
 
         for res in responses:

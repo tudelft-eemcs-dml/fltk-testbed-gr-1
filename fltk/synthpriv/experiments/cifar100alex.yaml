@@ -12,10 +12,10 @@ cuda: true
 experiment_prefix: "cifar100_alexnet"
 output_location: "output"
 tensor_board_active: true
-clients_per_round: 1
+clients_per_round: 4
 system:
   federator:
     hostname: "localhost"
     nic: "lo"
   clients:
-    amount: 1
+    amount: 4

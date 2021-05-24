@@ -1,15 +1,10 @@
-import torch.nn.functional as F
-
-import torch
 import json
 
-# Setting the seed for Torch
+import torch
+import torch.nn.functional as F
 import yaml
-
-from fltk.nets import Cifar10CNN, FashionMNISTCNN, Cifar100ResNet, FashionMNISTResNet, Cifar10ResNet, Cifar100VGG
-
-SEED = 1
-torch.manual_seed(SEED)
+from fltk.nets import (Cifar10CNN, Cifar10ResNet, Cifar100ResNet, Cifar100VGG,
+                       FashionMNISTCNN, FashionMNISTResNet)
 
 
 class Arguments:

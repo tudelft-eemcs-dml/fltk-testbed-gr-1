@@ -1,23 +1,12 @@
 import random
 
 import torch
-
-SEED = 1
-torch.manual_seed(SEED)
-
-from copy import deepcopy
-
+import torchvision
 from fltk.datasets.distributed.cifar10 import DistCIFAR10Dataset
 from fltk.datasets.distributed.cifar100 import DistCIFAR100Dataset
-from fltk.synthpriv.datasets.adult import DistAdultDataset
-from fltk.synthpriv.datasets.purchase import DistPurchaseDataset
-# from fltk.synthpriv.datasets.synthetic import SyntheticDataset
-from fltk.synthpriv.datasets.texas import DistTexasDataset
-from fltk.synthpriv.models.adult_mlp import AdultMLP
-from fltk.synthpriv.models.purchase_mlp import PurchaseMLP
-from fltk.synthpriv.models.texas_mlp import TexasMLP
+from fltk.synthpriv.datasets import *
+from fltk.synthpriv.models import *
 from fltk.util.base_config import BareConfig
-import torchvision
 
 
 class SynthPrivConfig(BareConfig):
@@ -28,7 +17,7 @@ class SynthPrivConfig(BareConfig):
         self.available_nets["TexasMLP"] = TexasMLP
         self.available_nets["PurchaseMLP"] = PurchaseMLP
         self.available_nets["DenseNet"] = torchvision.models.densenet121
-        self.available_nets["AlexNet"] = torchvision.models.alexnet
+        self.available_nets["AlexNet"] = AlexNet
         self.available_nets["PurchaseMLP"] = PurchaseMLP
         self.optimizer = torch.optim.Adam
         self.weight_decay = 0
@@ -52,8 +41,8 @@ class SynthPrivConfig(BareConfig):
         else:
             raise Exception(f"Dataset name {self.dataset_name} not recognized...")
 
-        # if "synth" in self.dataset_name.lower():
-        #     return SyntheticDataset(self.dataset(self), self, device, rank, model="imle", sigma=1.0, target_epsilon=5)
+        if "synth" in self.dataset_name.lower():
+            return SyntheticDataset(self.dataset(self), self, device, rank, model="imle", sigma=1.0, target_epsilon=5)
 
         return self.dataset(self)
 
