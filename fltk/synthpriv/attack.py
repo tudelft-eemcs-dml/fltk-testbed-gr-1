@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+from typing import List
 
 import joblib
 import numpy as np
@@ -8,6 +9,7 @@ import torch
 import torchvision
 import yaml
 from fltk.datasets.distributed.cifar100 import DistCIFAR100Dataset
+from fltk.nets.cifar_100_resnet import Cifar100ResNet
 from fltk.synthpriv.attacks import NasrAttack, UnsupervisedNasrAttack
 from fltk.synthpriv.config import SynthPrivConfig
 from fltk.synthpriv.datasets import *
@@ -21,7 +23,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("dataset", choices=["purchase", "texas", "cifar", "adult"])
     parser.add_argument("model_checkpoint")
-    parser.add_argument("--unsupervised", action="store_true")
+    parser.add_argument("-u", "--unsupervised", action="store_true")
+    parser.add_argument("--loss", action="store_true")
+    parser.add_argument("--no_labels", action="store_true")
+    parser.add_argument("-l", "--layers_to_exploit", nargs="*", default=[])
+    parser.add_argument("-g", "--gradients_to_exploit", nargs="*", default=[])
     args = parser.parse_args()
 
     implemented_datasets = ["purchase", "texas", "cifar", "adult"]
@@ -37,7 +43,6 @@ if __name__ == "__main__":
     cfg.merge_yaml(yaml_data)
     cfg.init_logger(logging)
 
-    print("loading target models")
     if args.dataset == "purchase":
         target_model = PurchaseMLP()
         dataset = DistPurchaseDataset(cfg)
@@ -48,24 +53,23 @@ if __name__ == "__main__":
         target_model = AdultMLP()
         dataset = DistAdultDataset(cfg)
     elif args.dataset == "cifar":
-        target_model = torchvision.models.densenet121()
+        if "densenet" in args.model_checkpoint.lower():
+            target_model = torchvision.models.densenet121()
+        elif "resnet" in args.model_checkpoint.lower():
+            target_model = Cifar100ResNet()
+        elif "alexnet" in args.model_checkpoint.lower():
+            target_model = AlexNet()
         dataset = fltk.datasets.distributed.cifar100.DistCIFAR100Dataset(cfg)
 
     target_model.load_state_dict(torch.load(args.model_checkpoint))
-    last_relu, last_linear = 0, 0
     for i, (name, mod) in enumerate(target_model.named_modules()):
-        # print(i, name, mod.__class__.__name__)
-        if mod.__class__.__name__ == "Linear":
-            last_linear = i
-        if mod.__class__.__name__ == "ReLU":
-            last_relu = i
+        print(i, name, mod.__class__.__name__)
 
-    print("loading data")
     if not args.unsupervised:
         member_train, nonmember_train, member_test, nonmember_test = [], [], [], []
         pbar = tqdm(zip(dataset.train_loader, dataset.test_loader), desc="Preparing data...")
         for (memfeat, memlabel), (nonmemfeat, nonmemlabel) in pbar:
-            if len(member_train) * len(memfeat) < 5_000:
+            if len(member_train) * len(memfeat) < 15_000:
                 member_train.append((memfeat, memlabel))
                 nonmember_train.append((nonmemfeat, nonmemlabel))
             else:
@@ -115,45 +119,36 @@ if __name__ == "__main__":
             mfte[:, overlap].mean(0),
             nmfte[:, overlap].mean(0),
         ]
+        mean_feature_mean_relative_pairwise_difference = []
         for i in range(len(ms)):
             for j in range(i + 1, len(ms)):
-                # print(torch.maximum(ms[i], ms[j]) == 0)
                 diff = abs(ms[i] - ms[j]) / torch.maximum(ms[i], ms[j])
-                print(
-                    i,
-                    j,
-                    f"{diff.min().item() * 100:.2f}",
-                    f"{diff.mean().item() * 100:.2f}",
-                    f"{diff.max().item() * 100:.2f}",
-                )
+                mean_feature_mean_relative_pairwise_difference.append(diff.mean().item() * 100)
+        print(
+            "Mean feature relative pairwise difference:", np.mean(mean_feature_mean_relative_pairwise_difference), "%"
+        )
         ls = [
             torch.nn.functional.one_hot(mltr).float().mean(0),
             torch.nn.functional.one_hot(nmltr).float().mean(0),
             torch.nn.functional.one_hot(mlte).float().mean(0),
             torch.nn.functional.one_hot(nmlte).float().mean(0),
         ]
-        print("\nlabels")
+        mean_label_mean_relative_pairwise_difference = []
         for i in range(len(ls)):
             for j in range(i + 1, len(ls)):
                 diff = abs(ls[i] - ls[j]) / torch.maximum(ls[i], ls[j])
-                print(
-                    i,
-                    j,
-                    f"{diff.min().item() * 100:.2f}",
-                    f"{diff.mean().item() * 100:.2f}",
-                    f"{diff.max().item() * 100:.2f}",
-                )
-        print()
+                mean_label_mean_relative_pairwise_difference.append(diff.mean().item() * 100)
+        print("Mean label relative pairwise difference:", np.mean(mean_label_mean_relative_pairwise_difference), "%")
 
         attacker = NasrAttack(
             "cuda",
             target_model,
             train_dataloader,
             test_dataloader,
-            layers_to_exploit=[last_relu],
-            gradients_to_exploit=[last_linear],
-            exploit_loss=True,
-            exploit_label=True,
+            layers_to_exploit=[int(l) for l in args.layers_to_exploit],
+            gradients_to_exploit=[int(g) for g in args.gradients_to_exploit],
+            exploit_loss=args.loss,
+            exploit_label=not args.no_labels,
         )
     else:
         train, member_test, nonmember_test = [], []
@@ -186,13 +181,11 @@ if __name__ == "__main__":
             "cuda",
             train,
             (member_test, nonmember_test),
-            layers_to_exploit=[last_relu],
-            gradients_to_exploit=[last_linear],
-            exploit_loss=True,
-            exploit_label=True,
+            layers_to_exploit=[int(l) for l in args.layers_to_exploit],
+            gradients_to_exploit=[int(g) for g in args.gradients_to_exploit],
+            exploit_loss=args.loss,
+            exploit_label=not args.no_labels,
         )
-
-    print("initalizing attack")
 
     print("training attack model")
     attacker.train_attack()

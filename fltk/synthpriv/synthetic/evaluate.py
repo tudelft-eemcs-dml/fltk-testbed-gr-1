@@ -321,6 +321,7 @@ if opt.model != "real-data":
 
         syn_df = pd.concat([X_syn_df, y_syn_df], axis=1)
         syn_df.to_csv(
-            opt.output_data_path + f"/{model.__class__.__name__}_synthetic_eps={opt.target_epsilon}_{Path(opt.train_data_path).stem}.csv"
+            opt.output_data_path
+            + f"/{model.__class__.__name__}_synthetic_eps={opt.target_epsilon}_{Path(opt.train_data_path).stem}.csv"
         )
         print("Saved synthetic data at : ", opt.output_data_path)

@@ -18,7 +18,7 @@ from torch import nn
 from tqdm import tqdm
 
 
-class ReshapeForGradConv(nn.Module):
+class ReshapeFCForGradConv(nn.Module):
     def forward(self, x):
         if x.dim() == 3:
             return x[:, None, ...]  # add channel dimension
@@ -54,45 +54,15 @@ def fcn_module(inputsize, layer_size=128):
     return fcn
 
 
-def cnn_for_cnn_layeroutputs(input_shape):
-    """
-    Creates a CNN submodule for Conv Layer outputs
-    """
-    print("CNN 4 CNN")
-    dim1, dim2, dim3, dim4 = input_shape
-    cnn = nn.Sequential(
-        [
-            Print(),
-            nn.Conv2d(dim4, dim4, kernel_size=(dim2, dim3), stride=(1, 1)),
-            Print(),
-            nn.ReLU(),
-            nn.Flatten(),
-            Print(),
-            nn.Dropout(0.2),
-            nn.Linear(_, 1024),  # TODO
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-        ]
-    )
-    cnn.apply(init_weights)
-    return cnn
-
-
 def cnn_for_fcn_gradients(input_shape):
     """
     Creates a CNN submodule for Linear layer gradients.
     """
     dim1, dim2 = input_shape
     cnn = nn.Sequential(
-        ReshapeForGradConv(),
+        ReshapeFCForGradConv(),
         nn.Dropout(0.2),
-        nn.Conv2d(1, 100, kernel_size=(1, dim2), stride=(1, 1)),
+        nn.Conv2d(1, 100, kernel_size=(1, dim2)),
         nn.ReLU(),
         nn.Flatten(),
         nn.Dropout(0.2),
@@ -108,21 +78,50 @@ def cnn_for_fcn_gradients(input_shape):
     return cnn
 
 
+def cnn_for_cnn_layeroutputs(input_shape):
+    """
+    Creates a CNN submodule for Conv Layer outputs
+    """
+    print("CNN 4 CNN")
+    _, c, h, w = input_shape
+    cnn = nn.Sequential(
+        nn.Conv2d(c, c, kernel_size=(h, w)),
+        nn.ReLU(),
+        nn.Flatten(),
+        nn.Dropout(0.2),
+        nn.Linear(c, 1024),
+        nn.ReLU(),
+        nn.Dropout(0.2),
+        nn.Linear(1024, 512),
+        nn.ReLU(),
+        nn.Linear(512, 128),
+        nn.ReLU(),
+        nn.Linear(128, 64),
+        nn.ReLU(),
+    )
+    cnn.apply(init_weights)
+    return cnn
+
+
+class PermuteCNNGradient(nn.Module):
+    def forward(self, x):
+        b, c_out, c_in, k1, k2 = x.shape
+        return x.reshape(b, c_out, c_in, k1 * k2).permute(0, 2, 1, 3)
+
+
 def cnn_for_cnn_gradients(input_shape):
     """
     Creates a CNN submodule for Conv layer gradients
     """
     print("CNN 4 CNN grads")
-    dim2, dim3, dim4, dim1 = input_shape
+    c_out, c_in, k1, k2 = input_shape
     cnn = nn.Sequential(
-        Print(),
-        nn.Conv2d(dim1, kernel_size=(dim2, dim3), stride=(1, 1), padding="same", name="cnn_grad_layer"),
-        Print(),
+        PermuteCNNGradient(),
+        nn.Conv2d(c_in, c_out, kernel_size=(c_out, k1 * k2)),
         nn.ReLU(),
         nn.Flatten(),
         nn.Dropout(0.2),
-        Print(),
-        nn.Linear(_, 64),  # TODO
+        nn.Linear(c_out, 64),
         nn.ReLU(),
     )
     cnn.apply(init_weights)
@@ -213,7 +212,17 @@ class NasrAttack(nn.Module):
         )
         self.epochs = epochs
 
-        self.out_name = f"{self.__class__.__name__}_{self.target_model.__class__.__name__}_{datetime.datetime.now()}"
+        self.out_name = "_".join(
+            [
+                self.__class__.__name__,
+                self.target_model.__class__.__name__,
+                f"label={exploit_label}",
+                f"loss={exploit_loss}",
+                f"layers={','.join([str(l) for l in layers_to_exploit])}" if layers_to_exploit else "nolayers",
+                f"gradients={','.join([str(g) for g in gradients_to_exploit])}" if gradients_to_exploit else "nograds",
+                str(datetime.datetime.now()).replace(" ", "-").split(".")[0],
+            ]
+        )
 
     def create_attack_model(self):
         self.input_modules = nn.ModuleList()
@@ -229,14 +238,14 @@ class NasrAttack(nn.Module):
             self.intermediate_feature_extractor = tx.Extractor(self.target_model, self.layers_to_exploit)
 
             example = next(iter(self.train_dataloader[0]))[0]
-            layer_shapes = [v.shape[1] for v in self.intermediate_feature_extractor(example)[1].values()]
+            layer_shapes = [v.shape for v in self.intermediate_feature_extractor(example)[1].values()]
 
             for shape, type in zip(layer_shapes, layer_classes):
                 requires_cnn = map(lambda i: i in type, CNN_COMPONENT_LIST)
                 if any(requires_cnn):
                     module = cnn_for_cnn_layeroutputs(shape)
                 else:
-                    module = fcn_module(shape, 100)
+                    module = fcn_module(shape[1], 100)
                 self.input_modules.append(module)
                 classifier_input_size += 64
 
@@ -372,8 +381,10 @@ class NasrAttack(nn.Module):
         self.input_modules.train()
         self.classifier.train()
         self.target_model.eval()
-        if self.intermediate_feature_extractor:
+        try:
             self.intermediate_feature_extractor.eval()
+        except AttributeError:
+            pass
 
         mtestset, nmtestset = self.test_dataloader
         member_loader, nonmember_loader = self.train_dataloader
@@ -423,8 +434,10 @@ class NasrAttack(nn.Module):
         self.input_modules.eval()
         self.classifier.eval()
         self.target_model.eval()
-        if self.intermediate_feature_extractor:
+        try:
             self.intermediate_feature_extractor.eval()
+        except AttributeError:
+            pass
 
         mtrainset, nmtrainset = self.test_dataloader
 
@@ -684,8 +697,10 @@ class UnsupervisedNasrAttack(NasrAttack):
         self.classifier.train()
         self.decoder.train()
         self.target_model.eval()
-        if self.intermediate_feature_extractor:
+        try:
             self.intermediate_feature_extractor.eval()
+        except AttributeError:
+            pass
 
         mtestset, nmtestset = self.test_dataloader
 
@@ -743,8 +758,10 @@ class UnsupervisedNasrAttack(NasrAttack):
         self.classifier.eval()
         self.decoder.eval()
         self.target_model.eval()
-        if self.intermediate_feature_extractor:
+        try:
             self.intermediate_feature_extractor.eval()
+        except AttributeError:
+            pass
 
         mtrainset, nmtrainset = self.test_dataloader
 
