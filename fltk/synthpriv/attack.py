@@ -59,7 +59,7 @@ if __name__ == "__main__":
             target_model = Cifar100ResNet()
         elif "alexnet" in args.model_checkpoint.lower():
             target_model = AlexNet()
-        dataset = fltk.datasets.distributed.cifar100.DistCIFAR100Dataset(cfg)
+        dataset = DistCIFAR100Dataset(cfg)
 
     target_model.load_state_dict(torch.load(args.model_checkpoint))
     for i, (name, mod) in enumerate(target_model.named_modules()):
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         member_train, nonmember_train, member_test, nonmember_test = [], [], [], []
         pbar = tqdm(zip(dataset.train_loader, dataset.test_loader), desc="Preparing data...")
         for (memfeat, memlabel), (nonmemfeat, nonmemlabel) in pbar:
-            if len(member_train) * len(memfeat) < 15_000:
+            if len(member_train) * len(memfeat) < 5_000:
                 member_train.append((memfeat, memlabel))
                 nonmember_train.append((nonmemfeat, nonmemlabel))
             else:
