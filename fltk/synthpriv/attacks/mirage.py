@@ -35,10 +35,10 @@ ORDINAL = "ordinal"
 PROCESSES = multiprocessing.cpu_count()
 
 
-def get_roc_auc(trueLables, scores):
+def get_auc(trueLables, scores):
     fpr, tpr, _ = roc_curve(trueLables, scores)
     area = auc(fpr, tpr)
-    return fpr, tpr, area
+    return area
 
 
 def get_scores(classProbabilities, trueLabels):
@@ -360,10 +360,10 @@ def run_mia(Attack, testData, testLabels, targetID, nr):
         "RecordPrivacyLossSyn": privLossSyn,
         "RecordPrivacyLossRaw": privLossRaw,
         "RecordPrivacyGain": privGain,
-        "Accuracy": get_attack_accuracy(tp, tn, nr),
-        "Precision": get_attack_precision(fp, tn),
-        "Recall": get_attack_recall(tp, fn),
-        "ROC AUC": get_roc_auc(testLabels, predictions),
+        "Accuracy": [get_attack_accuracy(tp, tn, len(predictions))],
+        "Precision": [get_attack_precision(fp, tn)],
+        "Recall": [get_attack_recall(tp, fn)],
+        "AUC": [get_auc(testLabels, predictions)],
     }
 
     return results
@@ -400,6 +400,10 @@ def worker_run_mia(params):
             "RecordPrivacyLossSyn": [],
             "RecordPrivacyLossRaw": [],
             "RecordPrivacyGain": [],
+            "Accuracy": [],
+            "Precision": [],
+            "Recall": [],
+            "AUC": [],
         }
         for AM in attacksList
     }
@@ -463,6 +467,10 @@ def evaluate_mia(
             "RecordPrivacyLossSyn": [],
             "RecordPrivacyLossRaw": [],
             "RecordPrivacyGain": [],
+            "Accuracy": [],
+            "Precision": [],
+            "Recall": [],
+            "AUC": [],
         }
         for AM in attacksList
     }
@@ -475,11 +483,11 @@ def evaluate_mia(
     for AM in attacksList:
         print()
         print(f"Attack {AM.__name__} with {len(targetRecords)} Targets")
-        print(f'Mean record privacy gain: {mean(results[AM.__name__]["RecordPrivacyGain"])}%')
+        # print(f'Mean record privacy gain: {mean(results[AM.__name__]["RecordPrivacyGain"])}%')
         print(f'Mean accuracy : {mean(results[AM.__name__]["Accuracy"])}%')
         print(f'Mean precision : {mean(results[AM.__name__]["Precision"])}%')
         print(f'Mean recall : {mean(results[AM.__name__]["Recall"])}%')
-        print(f'Mean ROC AUC : {mean(results[AM.__name__]["ROC AUC"])}%')
+        print(f'Mean AUC : {mean(results[AM.__name__]["AUC"])}%')
         print()
 
     return results

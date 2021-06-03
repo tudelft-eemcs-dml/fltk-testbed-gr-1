@@ -1,3 +1,15 @@
+venv
+venv-*
+default_models
+data
+data_loaders
+simple_example
+docker_data
+.idea
+*.tmp.txt
+docker-compose.yml
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -129,14 +141,3 @@ dmypy.json
 .pyre/
 
 
-venv
-venv-*
-default_models
-data
-data_loaders
-simple_example
-output
-docker_data
-.idea
-*.tmp.txt
-docker-compose.yml

@@ -1,0 +1,83 @@
+Attack RandomForestClassifierNaiveFeatureSet with 51 Targets
+Mean accuracy : 0.52%
+Mean precision : 0.3780392156862745%
+Mean recall : 0.6619607843137255%
+Mean AUC : 0.52%
+
+
+Attack LogisticRegressionNaiveFeatureSet with 51 Targets
+Mean accuracy : 0.5003921568627451%
+Mean precision : 0.9223529411764706%
+Mean recall : 0.0784313725490196%
+Mean AUC : 0.5003921568627451%
+
+
+Attack KNeighborsClassifierNaiveFeatureSet with 51 Targets
+Mean accuracy : 0.4850980392156863%
+Mean precision : 0.20784313725490197%
+Mean recall : 0.7623529411764706%
+Mean AUC : 0.4850980392156863%
+
+
+Attack RandomForestClassifierHistogramFeatureSet with 51 Targets
+Mean accuracy : 0.5823529411764706%
+Mean precision : 0.5827450980392157%
+Mean recall : 0.5819607843137254%
+Mean AUC : 0.5823529411764706%
+
+
+Attack LogisticRegressionHistogramFeatureSet with 51 Targets
+Mean accuracy : 0.5458823529411765%
+Mean precision : 0.47372549019607846%
+Mean recall : 0.6180392156862745%
+Mean AUC : 0.5458823529411765%
+
+
+Attack KNeighborsClassifierHistogramFeatureSet with 51 Targets
+Mean accuracy : 0.5854901960784313%
+Mean precision : 0.5686274509803921%
+Mean recall : 0.6023529411764705%
+Mean AUC : 0.5854901960784313%
+
+
+Attack RandomForestClassifierCorrelationsFeatureSet with 51 Targets
+Mean accuracy : 0.5843137254901961%
+Mean precision : 0.6368627450980392%
+Mean recall : 0.5317647058823529%
+Mean AUC : 0.5843137254901961%
+
+
+Attack LogisticRegressionCorrelationsFeatureSet with 51 Targets
+Mean accuracy : 0.6282352941176471%
+Mean precision : 0.5803921568627451%
+Mean recall : 0.676078431372549%
+Mean AUC : 0.6282352941176471%
+
+
+Attack KNeighborsClassifierCorrelationsFeatureSet with 51 Targets
+Mean accuracy : 0.6%
+Mean precision : 0.4745098039215686%
+Mean recall : 0.7254901960784313%
+Mean AUC : 0.6%
+
+
+Attack RandomForestClassifierEnsembleFeatureSet with 51 Targets
+Mean accuracy : 0.5796078431372549%
+Mean precision : 0.6666666666666666%
+Mean recall : 0.49254901960784314%
+Mean AUC : 0.5796078431372549%
+
+
+Attack LogisticRegressionEnsembleFeatureSet with 51 Targets
+Mean accuracy : 0.5003921568627451%
+Mean precision : 0.9223529411764706%
+Mean recall : 0.0784313725490196%
+Mean AUC : 0.5003921568627451%
+
+
+Attack KNeighborsClassifierEnsembleFeatureSet with 51 Targets
+Mean accuracy : 0.4850980392156863%
+Mean precision : 0.20784313725490197%
+Mean recall : 0.7623529411764706%
+Mean AUC : 0.4850980392156863%
+
