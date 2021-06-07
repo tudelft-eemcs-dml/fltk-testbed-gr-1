@@ -276,7 +276,7 @@ checkpoint_path='./mnt/nfs/work1/amir/milad/checkpoints_100cifar_alexnet_white_f
 train_batch=100
 test_batch=100
 lr=0.05
-epochs=500
+epochs=100
 state={}
 state['lr']=lr
 
@@ -491,7 +491,7 @@ def privacy_train_fed(trainloader,testloader, models,inference_model,classifier_
 
         # measure accuracy and record loss
         prec1=np.mean((member_output.data.cpu().numpy() >0.5)==v_is_member_labels.data.cpu().numpy())
-        losses.update(loss.data[0], model_input.size(0))
+        losses.update(loss.data, model_input.size(0))
         top1.update(prec1, model_input.size(0))
 
         # compute gradient and do SGD step
@@ -614,7 +614,7 @@ def privacy_test_fed(trainloader,testloader, models,inference_model,classifier_c
 
         # measure accuracy and record loss
         prec1=np.mean((member_output.data.cpu().numpy() >0.5)==v_is_member_labels.data.cpu().numpy())
-        losses.update(loss.data[0], model_input.size(0))
+        losses.update(loss.data, model_input.size(0))
         top1.update(prec1, model_input.size(0))
 
         # compute gradient and do SGD step
@@ -826,98 +826,99 @@ testloader = data.DataLoader(testset, batch_size=test_batch, shuffle=True, num_w
 # In[27]:
 
 
-# nets={}
-# optimizers={}
-# for i in np.arange(0,300,10):
-#     nets[i] = AlexNet(num_classes)
-#     nets[i] = nets[i].cuda()
-#     optimizers[i] = optim.SGD(nets[i].parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+nets={}
+optimizers={}
+for i in np.arange(0,300,10):
+    nets[i] = AlexNet(num_classes)
+    nets[i] = nets[i].cuda()
+    optimizers[i] = optim.SGD(nets[i].parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
 #
-# for i in np.arange(0,300,10):
-#     resume='./mnt/nfs/work1/amir/milad/checkpoints_100cifar_alexnet_white_fed/epoch_%d_main'%i
-#     print('==> Resuming from checkpoint..')
-#     # assert os.path.isfile(resume), 'Error: no checkpoint directory found!'
-#     checkpoint = os.path.dirname(resume)
-#     checkpoint = torch.load(resume)
-#     print (checkpoint['epoch'])
-#     nets[i].load_state_dict(checkpoint['state_dict'])
+for i in np.arange(0,100,10):
+    resume='./mnt/nfs/work1/amir/milad/checkpoints_100cifar_alexnet_white_fed/epoch_%d_main'%i
+    print('==> Resuming from checkpoint..')
+    assert os.path.isfile(resume), 'Error: no checkpoint directory found!'
+    checkpoint = os.path.dirname(resume)
+    checkpoint = torch.load(resume)
+    print (checkpoint['epoch'])
+    nets[i].load_state_dict(checkpoint['state_dict'])
 
 
 # In[28]:
 
 
 
-best_acc=0
-
-
-# Train and val
-for epoch in range(0, 500):
-    for p in range(number_parties):
-        
-        adjust_learning_rate(parties_optimizer[p], epoch,state[p])
-
-        print('\nEpoch: [%d | %d] LR: %f Party:%d' % (epoch + 1, epochs, state[p]['lr'],p))
-
-
-
-        train_loss, train_acc = train(train_classifier_loader_parties[p],parties_model[p], criterion, parties_optimizer[p], epoch, use_cuda)
-        test_loss, test_acc = test(testloader, parties_model[p], criterion, epoch, use_cuda)
-        #privacy_loss, privacy_acc = privacy_train(trainloader,testloader,model,inferenece_model,criterion_attack,optimizer_mem,epoch,use_cuda)
-        print ('test acc',test_acc , 'Party: ',p)
-    # append logger file
-
-    # save model
-
-        save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': parties_model[p].state_dict(),
-                'acc': test_acc,
-                'best_acc': False,
-                'optimizer' : parties_optimizer[p].state_dict(),
-            }, False, filename='epoch_%d_party_%d'%(epoch,p),checkpoint=checkpoint_path)
-    
-    params = net_main.named_parameters()
-    party_dics ={}
-    for  i in range(number_parties):
-        party_dics[i] = dict(parties_model[i].named_parameters())
-    dict_params = dict(net_main.named_parameters())
-    beta  = 1.0/float(number_parties)
-    for name, param in params:
-
-        dict_params[name].data.copy_( sum([beta* party_dics[i][name].data for i in range(number_parties)] ))
-
-    net_main.load_state_dict(dict_params)
-    for i in range(number_parties):
-        parties_model[i].load_state_dict(dict_params)
-        #parties_optimizer[i] = optim.SGD(parties_model[i].parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
-
-    
-    test_loss, test_acc = test(testloader, net_main, criterion, epoch, use_cuda)
-    is_best = test_acc>best_acc
-    
-    best_acc = max(test_acc, best_acc)
-    print ('test acc',test_acc , 'Main')
-    # append logger file
-
-    # save model
-
-    save_checkpoint({
-            'epoch': epoch + 1,
-            'state_dict': net_main.state_dict(),
-            'acc': test_acc,
-            'best_acc': is_best,
-        }, is_best, filename='epoch_%d_main'%(epoch),checkpoint=checkpoint_path)
-
-print('Best acc:')
-print(best_acc)
+# best_acc=0
+#
+#
+# # Train and val
+# for epoch in range(0, 100):
+#     for p in range(number_parties):
+#
+#         adjust_learning_rate(parties_optimizer[p], epoch,state[p])
+#
+#         print('\nEpoch: [%d | %d] LR: %f Party:%d' % (epoch + 1, epochs, state[p]['lr'],p))
+#
+#
+#
+#         train_loss, train_acc = train(train_classifier_loader_parties[p],parties_model[p], criterion, parties_optimizer[p], epoch, use_cuda)
+#         test_loss, test_acc = test(testloader, parties_model[p], criterion, epoch, use_cuda)
+#         #privacy_loss, privacy_acc = privacy_train(trainloader,testloader,model,inferenece_model,criterion_attack,optimizer_mem,epoch,use_cuda)
+#         print ('test acc',test_acc , 'Party: ',p)
+#     # append logger file
+#
+#     # save model
+#
+#         save_checkpoint({
+#                 'epoch': epoch + 1,
+#                 'state_dict': parties_model[p].state_dict(),
+#                 'acc': test_acc,
+#                 'best_acc': False,
+#                 'optimizer' : parties_optimizer[p].state_dict(),
+#             }, False, filename='epoch_%d_party_%d'%(epoch,p),checkpoint=checkpoint_path)
+#
+#     params = net_main.named_parameters()
+#     party_dics ={}
+#     for  i in range(number_parties):
+#         party_dics[i] = dict(parties_model[i].named_parameters())
+#     dict_params = dict(net_main.named_parameters())
+#     beta  = 1.0/float(number_parties)
+#     for name, param in params:
+#
+#         dict_params[name].data.copy_( sum([beta* party_dics[i][name].data for i in range(number_parties)] ))
+#
+#     net_main.load_state_dict(dict_params)
+#     for i in range(number_parties):
+#         parties_model[i].load_state_dict(dict_params)
+#         #parties_optimizer[i] = optim.SGD(parties_model[i].parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+#
+#
+#     test_loss, test_acc = test(testloader, net_main, criterion, epoch, use_cuda)
+#     is_best = test_acc>best_acc
+#
+#     best_acc = max(test_acc, best_acc)
+#     print ('test acc',test_acc , 'Main')
+#     # append logger file
+#
+#     # save model
+#
+#     save_checkpoint({
+#             'epoch': epoch + 1,
+#             'state_dict': net_main.state_dict(),
+#             'acc': test_acc,
+#             'best_acc': is_best,
+#         }, is_best, filename='epoch_%d_main'%(epoch),checkpoint=checkpoint_path)
+#
+# print('Best acc:')
+# print(best_acc)
 
 
 # In[29]:
 
 
-epoch=300
-test_loss, test_acc = test(testloader, nets[15], criterion, epoch, use_cuda)
-print (test_acc)
+epoch=100
+
+# test_loss, test_acc = test(testloader, nets[15], criterion, epoch, use_cuda)
+# print (test_acc)
 
 
 # In[28]:
@@ -939,13 +940,13 @@ save_checkpoint_adversary({
 # In[ ]:
 
 
-a[1][1][1].type(torch.FloatTensor)
+# a[1][1][1].type(torch.FloatTensor)
 
 
 # In[22]:
 
 
-epoch=500
+epoch=100
 lr=0.5
 
 
