@@ -1,9 +1,7 @@
 import argparse
 import logging
 import os
-from typing import List
 
-import joblib
 import numpy as np
 import torch
 import torchvision
@@ -15,7 +13,6 @@ from fltk.synthpriv.config import SynthPrivConfig
 from fltk.synthpriv.datasets import *
 from fltk.synthpriv.models import *
 from tqdm import tqdm
-import fltk
 
 torch.backends.cudnn.benchmark = True
 
@@ -30,7 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--gradients_to_exploit", nargs="*", default=[])
     args = parser.parse_args()
 
-    implemented_datasets = ["purchase", "texas", "cifar", "adult"]
+    implemented_datasets = ["purchase", "texas", "cifar-dense", "cifar-alex", "adult"]
     configs = {
         "purchase": {"data_location": "fltk/synthpriv/experiments/purchase.yaml"},
         "texas": {"data_location": "fltk/synthpriv/experiments/texas.yaml"},

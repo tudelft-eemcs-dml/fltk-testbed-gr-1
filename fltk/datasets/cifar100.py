@@ -8,6 +8,24 @@ class CIFAR100Dataset(Dataset):
     def __init__(self, args):
         super(CIFAR100Dataset, self).__init__(args)
 
+    def get_train_dataset_loc(self):
+        normalize = transforms.Normalize(mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276])
+        transform = transforms.Compose(
+            [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, 4), transforms.ToTensor(), normalize]
+        )
+        train_dataset = datasets.CIFAR100(
+            root=self.get_args().get_data_path(), train=True, download=True, transform=transform
+        )
+        return train_dataset
+
+    def get_test_dataset_loc(self):
+        normalize = transforms.Normalize(mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276])
+        transform = transforms.Compose([transforms.ToTensor(), normalize])
+        test_dataset = datasets.CIFAR100(
+            root=self.get_args().get_data_path(), train=False, download=True, transform=transform
+        )
+        return test_dataset
+
     def load_train_dataset(self):
         self.get_args().get_logger().debug("Loading CIFAR100 train data")
 
