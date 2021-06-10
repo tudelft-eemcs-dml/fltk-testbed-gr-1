@@ -1,8 +1,5 @@
-from __future__ import print_function
-
-import argparse
+import errno
 import os
-import pickle
 import random
 import shutil
 import time
@@ -18,8 +15,6 @@ import torch.utils.data as data
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from tqdm import tqdm
-
-from utils import AverageMeter, accuracy, mkdir_p
 
 use_cuda = torch.cuda.is_available()
 manualSeed = random.randint(1, 10000)
@@ -65,94 +60,32 @@ def alexnet(**kwargs):
     return model
 
 
-class InferenceAttack(nn.Module):
+class AverageMeter(object):
+    """Computes and stores the average and current value
+    Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262
+    """
+
     def __init__(self):
-        super(InferenceAttack, self).__init__()
+        self.reset()
 
-        self.features = nn.Sequential(nn.Linear(100, 64), nn.ReLU(), nn.Linear(64, 1))
-        for key in self.state_dict():
-            if key.split(".")[-1] == "weight":
-                nn.init.normal_(self.state_dict()[key], std=0.01)
-                print(key)
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
 
-            elif key.split(".")[-1] == "bias":
-                self.state_dict()[key][...] = 0
-        self.output = nn.Sigmoid()
-
-    def forward(self, x):
-        is_member = self.features(x)
-
-        return self.output(is_member)
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
 
 
-class InferenceAttack_HZ(nn.Module):
-    def __init__(self, num_classes):
+class NasrAttackV2(nn.Module):
+    def __init__(self, num_classes, num_models):
         self.num_classes = num_classes
-        super(InferenceAttack_HZ, self).__init__()
-        # self.grads_conv = nn.Sequential(
-        #     nn.Dropout(p=0.2),
-        #     nn.Conv2d(1, 1000, kernel_size=(1, 100), stride=1),
-        #     nn.ReLU(),
-        # )
-        self.grads_linear = nn.Sequential(
-            nn.Dropout(p=0.2),
-            nn.Linear(256 * 100, 1024),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 128),
-            nn.ReLU(),
-        )
-        self.labels = nn.Sequential(
-            nn.Linear(num_classes, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-        )
-        self.preds = nn.Sequential(
-            nn.Linear(num_classes, 100),
-            nn.ReLU(),
-            nn.Linear(100, 64),
-            nn.ReLU(),
-        )
-        self.correct = nn.Sequential(
-            nn.Linear(1, num_classes),
-            nn.ReLU(),
-            nn.Linear(num_classes, 64),
-            nn.ReLU(),
-        )
-        self.combine = nn.Sequential(
-            nn.Linear(64 + 64 + 64 + 128, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-        )
-        for key in self.state_dict():
-            if key.split(".")[-1] == "weight":
-                nn.init.normal_(self.state_dict()[key], std=0.01)
-            elif key.split(".")[-1] == "bias":
-                self.state_dict()[key][...] = 0
-        self.output = nn.Sigmoid()
-
-    def forward(self, g, l, c, o):
-        # out_g = self.grads_conv(g).view([g.size()[0],-1])
-        out_g = self.grads_linear(g.view([g.size()[0], -1]))
-        out_l = self.labels(l)
-        out_c = self.correct(c)
-        out_o = self.preds(o)
-        is_member = self.combine(torch.cat((out_g, out_c, out_l, out_o), 1))
-        return self.output(is_member)
-
-
-class InferenceAttack_HZ_FED(nn.Module):
-    def __init__(self, num_classes, num_feds):
-        self.num_classes = num_classes
-        self.num_feds = num_feds
-        super(InferenceAttack_HZ_FED, self).__init__()
+        self.num_models = num_models
+        super(NasrAttackV2, self).__init__()
         self.grads_conv = nn.Sequential(
             nn.Dropout(p=0.2),
             nn.Conv2d(1, 1000, kernel_size=(1, 100), stride=1),
@@ -187,7 +120,7 @@ class InferenceAttack_HZ_FED(nn.Module):
             nn.ReLU(),
         )
         self.combine = nn.Sequential(
-            nn.Linear(64 * 4 * self.num_feds, 256),
+            nn.Linear((64 + 64 + 64 + 128) * self.num_models, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -195,725 +128,202 @@ class InferenceAttack_HZ_FED(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 1),
         )
-        for key in self.state_dict():
-            # print(key)
-            if key.split(".")[-1] == "weight":
-                nn.init.normal_(self.state_dict()[key], std=0.01)
-                # print(key)
-
-            elif key.split(".")[-1] == "bias":
-                self.state_dict()[key][...] = 0
         self.output = nn.Sigmoid()
 
-    def forward(self, gs, ls, cs, os):
+        for key in self.state_dict():
+            if key.split(".")[-1] == "weight":
+                nn.init.normal_(self.state_dict()[key], std=0.01)
+            elif key.split(".")[-1] == "bias":
+                self.state_dict()[key][...] = 0
 
-        for i in range(self.num_feds):
-            out_g = self.grads_conv(gs[i]).view([gs[i].size()[0], -1])
-            out_g = self.grads_linear(out_g)
-            out_l = self.labels(ls[i])
+    def forward(self, gs, l, cs, os):
+        for i in range(self.num_models):
+            out_g = self.grads_linear(self.grads_conv(gs[i]).view([gs[i].size()[0], -1]))
+            out_l = self.labels(l)  # labels are the same for all target models
             out_c = self.correct(cs[i])
             out_o = self.preds(os[i])
             if i == 0:
-                com_inp = torch.cat((out_g, out_c, out_o), 1)
+                com_inp = torch.cat((out_g, out_l, out_c, out_o), 1)
             else:
-                com_inp = torch.cat((out_g, out_c, out_o, com_inp), 1)
-
+                com_inp = torch.cat((out_g, out_l, out_c, out_o, com_inp), 1)
         is_member = self.combine(com_inp)
-
         return self.output(is_member)
 
 
-def train(trainloader, model, criterion, optimizer, pbar, use_cuda):
-    # switch to train mode
-    model.train()
-
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-    end = time.time()
-
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
-        # measure data loading time
-        data_time.update(time.time() - end)
-
-        if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = torch.autograd.Variable(inputs), torch.autograd.Variable(targets)
-
-        # compute output
-        outputs = model(inputs)
-
-        loss = criterion(outputs, targets)
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data, inputs.size(0))
-        top1.update(prec1, inputs.size(0))
-        top5.update(prec5, inputs.size(0))
-
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-    pbar.write(
-        "Data: {data:.3f}s | Batch: {bt:.3f}s | | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}".format(
-            data=data_time.avg, bt=batch_time.avg, loss=losses.avg, top1=top1.avg, top5=top5.avg
-        )
-    )
-
-    return (losses.avg, top1.avg)
-
-
-def test(testloader, model, criterion, pbar, use_cuda):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    top5 = AverageMeter()
-
-    # switch to evaluate mode
-    model.eval()
-
-    end = time.time()
-    for batch_idx, (inputs, targets) in enumerate(testloader):
-        # measure data loading time
-        data_time.update(time.time() - end)
-
-        if use_cuda:
-            inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = torch.autograd.Variable(inputs, volatile=True), torch.autograd.Variable(targets)
-
-        # compute output
-        outputs = model(inputs)
-        loss = criterion(outputs, targets)
-
-        # measure accuracy and record loss
-        prec1, prec5 = accuracy(outputs.data, targets.data, topk=(1, 5))
-        losses.update(loss.data, inputs.size(0))
-        top1.update(prec1, inputs.size(0))
-        top5.update(prec5, inputs.size(0))
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-    pbar.write(
-        "Data: {data:.3f}s | Batch: {bt:.3f}s | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}".format(
-            data=data_time.avg,
-            bt=batch_time.avg,
-            loss=losses.avg,
-            top1=top1.avg,
-            top5=top5.avg,
-        )
-    )
-
-    return (losses.avg, top1.avg)
-
-
-def mia_train_fed(
-    trainloader,
-    testloader,
-    models,
-    inference_model,
-    classifier_criterion,
+def mia(
+    memloader,
+    nonmemloader,
+    attack_model,
     criterion,
-    classifier_optimizers,
     optimizer,
-    pbar,
-    num_batchs=1000,
+    classifiers,
+    classifier_criterion,
+    classifier_optimizers,
+    num_batches=10,
 ):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    mtop1_a = AverageMeter()
-    mtop5_a = AverageMeter()
+    losses, top1 = AverageMeter(), AverageMeter()
 
-    inference_model.train()
-    for model in models:
+    attack_model.train() if optimizer else attack_model.eval()
+    for model in classifiers:
         model.eval()
-    # switch to evaluate mode
 
-    end = time.time()
-    for batch_idx, ((mem_input, mem_target), (nonmem_input, nonmem_target)) in enumerate(zip(trainloader, testloader)):
-        # measure data loading time
-        if batch_idx > num_batchs:
-            break
-        data_time.update(time.time() - end)
-        mem_input = mem_input.cuda()
-        nonmem_input = nonmem_input.cuda()
-        mem_target = mem_target.cuda()
-        nonmem_target = nonmem_target.cuda()
+    data_iter = iter(zip(memloader, nonmemloader))
 
-        v_mem_input = torch.autograd.Variable(mem_input)
-        v_nonmem_input = torch.autograd.Variable(nonmem_input)
-        v_mem_target = torch.autograd.Variable(mem_target)
-        v_nonmem_target = torch.autograd.Variable(nonmem_target)
+    for _ in range(num_batches):
+        (mem_input, mem_target), (nonmem_input, nonmem_target) = next(data_iter)
+        mem_input, nonmem_input = mem_input.cuda(), nonmem_input.cuda()
+        mem_target, nonmem_target = mem_target.cuda(), nonmem_target.cuda()
 
-        # compute output
-        model_input = torch.cat((v_mem_input, v_nonmem_input))
-        pred_outputs = []
-        for i in range(len(models)):
-            pred_outputs.append(models[i](model_input))
+        model_input = torch.cat((mem_input, nonmem_input))
+        pred_outputs = [classifier(model_input) for classifier in classifiers]
 
-        infer_input = torch.cat((v_mem_target, v_nonmem_target))
+        labels = torch.cat((mem_target, nonmem_target))
+        labels_1hot = nn.functional.one_hot(labels, num_classes=num_classes).float()
 
-        one_hot_tr = torch.from_numpy((np.zeros((infer_input.size(0), 100)))).cuda().type(torch.cuda.FloatTensor)
-        target_one_hot_tr = one_hot_tr.scatter_(1, infer_input.type(torch.cuda.LongTensor).view([-1, 1]).data, 1)
-        infer_input_one_hot = torch.autograd.Variable(target_one_hot_tr)
-
-        models_outputs = []
-        correct_labels = []
-        model_grads = []
-
-        for m_n in range(len(models)):
-
-            correct = torch.sum(pred_outputs[m_n] * infer_input_one_hot, dim=1)
+        classifiers_outputs, correct_labels, model_grads = [], [], []
+        for m_n in range(len(classifiers)):
+            correct = torch.sum(pred_outputs[m_n] * labels_1hot, dim=1)
             grads = torch.zeros(0)
 
             for i in range(2 * batch_size):
-                loss_classifier = classifier_criterion(pred_outputs[m_n][i].view([1, -1]), infer_input[i].view([-1]))
+                loss_classifier = classifier_criterion(pred_outputs[m_n][i].view([1, -1]), labels[i].view([-1]))
                 classifier_optimizers[m_n].zero_grad()
                 if i == (2 * batch_size) - 1:
                     loss_classifier.backward(retain_graph=False)
                 else:
                     loss_classifier.backward(retain_graph=True)
-                g = models[m_n].classifier.weight.grad.view([1, 1, 256, 100])
+                g = classifiers[m_n].classifier.weight.grad.view([1, 1, 256, 100])
 
                 if grads.size()[0] != 0:
-
                     grads = torch.cat((grads, g))
-
                 else:
                     grads = g
 
-            grads = torch.autograd.Variable(torch.from_numpy(grads.data.cpu().numpy()).cuda())
-            c = torch.autograd.Variable(torch.from_numpy(correct.view([-1, 1]).data.cpu().numpy()).cuda())
-            preds = torch.autograd.Variable(torch.from_numpy(pred_outputs[m_n].data.cpu().numpy()).cuda())
-            models_outputs.append(preds)
-            correct_labels.append(c)
-            model_grads.append(grads)
-        member_output = inference_model(model_grads, infer_input_one_hot, correct_labels, models_outputs)
+            classifiers_outputs.append(pred_outputs[m_n].detach())
+            correct_labels.append(correct.view([-1, 1]).detach())
+            model_grads.append(grads.detach())
 
-        is_member_labels = torch.from_numpy(
-            np.reshape(np.concatenate((np.zeros(v_mem_input.size(0)), np.ones(v_nonmem_input.size(0)))), [-1, 1])
-        ).cuda()
+        attack_output = attack_model(model_grads, labels_1hot, correct_labels, classifiers_outputs)
+        is_member = torch.cat((torch.zeros(batch_size, device="cuda"), torch.ones(batch_size, device="cuda")))[:, None]
 
-        v_is_member_labels = torch.autograd.Variable(is_member_labels).type(torch.cuda.FloatTensor)
+        if optimizer:
+            loss = criterion(attack_output, is_member)
+            losses.update(loss.detach().item(), model_input.size(0))
 
-        loss = criterion(member_output, v_is_member_labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        # measure accuracy and record loss
-        prec1 = np.mean((member_output.data.cpu().numpy() > 0.5) == v_is_member_labels.data.cpu().numpy())
-        losses.update(loss.data, model_input.size(0))
+        prec1 = torch.mean(((attack_output > 0.5) == is_member).float()).detach().item()
         top1.update(prec1, model_input.size(0))
 
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        # plot progress
-        if batch_idx % 10 == 0:
-            pbar.write(
-                "({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | | Loss: {loss:.4f} | top1: {top1: .4f} ".format(
-                    batch=batch_idx,
-                    size=len(trainloader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                )
-            )
-
-    return (losses.avg, top1.avg)
-
-
-def mia_test_fed(
-    trainloader,
-    testloader,
-    models,
-    inference_model,
-    classifier_criterion,
-    criterion,
-    classifier_optimizers,
-    pbar,
-    num_batchs=1000,
-):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    mtop1_a = AverageMeter()
-    mtop5_a = AverageMeter()
-
-    inference_model.eval()
-    for model in models:
-        model.eval()
-    # switch to evaluate mode
-
-    end = time.time()
-    for batch_idx, ((mem_input, mem_target), (nonmem_input, nonmem_target)) in enumerate(zip(trainloader, testloader)):
-        # measure data loading time
-        if batch_idx > num_batchs:
-            break
-        data_time.update(time.time() - end)
-        mem_input = mem_input.cuda()
-        nonmem_input = nonmem_input.cuda()
-        mem_target = mem_target.cuda()
-        nonmem_target = nonmem_target.cuda()
-
-        v_mem_input = torch.autograd.Variable(mem_input)
-        v_nonmem_input = torch.autograd.Variable(nonmem_input)
-        v_mem_target = torch.autograd.Variable(mem_target)
-        v_nonmem_target = torch.autograd.Variable(nonmem_target)
-
-        # compute output
-        model_input = torch.cat((v_mem_input, v_nonmem_input))
-        pred_outputs = []
-        for i in range(len(models)):
-            pred_outputs.append(models[i](model_input))
-
-        infer_input = torch.cat((v_mem_target, v_nonmem_target))
-
-        one_hot_tr = torch.from_numpy((np.zeros((infer_input.size(0), 100)))).cuda().type(torch.cuda.FloatTensor)
-        target_one_hot_tr = one_hot_tr.scatter_(1, infer_input.type(torch.cuda.LongTensor).view([-1, 1]).data, 1)
-        infer_input_one_hot = torch.autograd.Variable(target_one_hot_tr)
-
-        models_outputs = []
-        correct_labels = []
-        model_grads = []
-
-        for m_n in range(len(models)):
-
-            correct = torch.sum(pred_outputs[m_n] * infer_input_one_hot, dim=1)
-            grads = torch.zeros(0)
-
-            for i in range(2 * batch_size):
-                loss_classifier = classifier_criterion(pred_outputs[m_n][i].view([1, -1]), infer_input[i].view([-1]))
-                classifier_optimizers[m_n].zero_grad()
-                if i == (2 * batch_size) - 1:
-                    loss_classifier.backward(retain_graph=False)
-                else:
-                    loss_classifier.backward(retain_graph=True)
-                g = models[m_n].classifier.weight.grad.view([1, 1, 256, 100])
-
-                if grads.size()[0] != 0:
-
-                    grads = torch.cat((grads, g))
-
-                else:
-                    grads = g
-
-            grads = torch.autograd.Variable(torch.from_numpy(grads.data.cpu().numpy()).cuda())
-            c = torch.autograd.Variable(torch.from_numpy(correct.view([-1, 1]).data.cpu().numpy()).cuda())
-            preds = torch.autograd.Variable(torch.from_numpy(pred_outputs[m_n].data.cpu().numpy()).cuda())
-            models_outputs.append(preds)
-            correct_labels.append(c)
-            model_grads.append(grads)
-        member_output = inference_model(model_grads, infer_input_one_hot, correct_labels, models_outputs)
-
-        is_member_labels = torch.from_numpy(
-            np.reshape(np.concatenate((np.zeros(v_mem_input.size(0)), np.ones(v_nonmem_input.size(0)))), [-1, 1])
-        ).cuda()
-
-        v_is_member_labels = torch.autograd.Variable(is_member_labels).type(torch.cuda.FloatTensor)
-
-        loss = criterion(member_output, v_is_member_labels)
-
-        # measure accuracy and record loss
-        prec1 = np.mean((member_output.data.cpu().numpy() > 0.5) == v_is_member_labels.data.cpu().numpy())
-        losses.update(loss.data, model_input.size(0))
-        top1.update(prec1, model_input.size(0))
-
-        # compute gradient and do SGD step
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        # plot progress
-        if batch_idx % 10 == 0:
-            pbar.write(
-                "({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | | Loss: {loss:.4f} | top1: {top1: .4f} ".format(
-                    batch=batch_idx,
-                    size=len(trainloader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                )
-            )
-
-    return (losses.avg, top1.avg)
-
-
-def mia_train(
-    trainloader,
-    testloader,
-    model,
-    inference_model,
-    classifier_criterion,
-    criterion,
-    classifier_optimizer,
-    optimizer,
-    pbar,
-    num_batchs=1000,
-):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    mtop1_a = AverageMeter()
-    mtop5_a = AverageMeter()
-
-    inference_model.train()
-    model.eval()
-    # switch to evaluate mode
-
-    end = time.time()
-    for batch_idx, ((mem_input, mem_target), (nonmem_input, nonmem_target)) in enumerate(zip(trainloader, testloader)):
-        # measure data loading time
-        if batch_idx > num_batchs:
-            break
-        data_time.update(time.time() - end)
-        mem_input = mem_input.cuda()
-        nonmem_input = nonmem_input.cuda()
-        mem_target = mem_target.cuda()
-        nonmem_target = nonmem_target.cuda()
-
-        v_mem_input = torch.autograd.Variable(mem_input)
-        v_nonmem_input = torch.autograd.Variable(nonmem_input)
-        v_mem_target = torch.autograd.Variable(mem_target)
-        v_nonmem_target = torch.autograd.Variable(nonmem_target)
-
-        # compute output
-        model_input = torch.cat((v_mem_input, v_nonmem_input))
-        pred_outputs = model(model_input)
-
-        infer_input = torch.cat((v_mem_target, v_nonmem_target))
-
-        one_hot_tr = torch.from_numpy((np.zeros((infer_input.size(0), 100)))).cuda().type(torch.cuda.FloatTensor)
-        target_one_hot_tr = one_hot_tr.scatter_(1, infer_input.type(torch.cuda.LongTensor).view([-1, 1]).data, 1)
-        infer_input_one_hot = torch.autograd.Variable(target_one_hot_tr)
-
-        correct = torch.sum(pred_outputs * infer_input_one_hot, dim=1)
-        grads = torch.zeros(0)
-
-        for i in range(2 * batch_size):
-            loss_classifier = classifier_criterion(pred_outputs[i].view([1, -1]), infer_input[i].view([-1]))
-            classifier_optimizer.zero_grad()
-            if i == (2 * batch_size) - 1:
-                loss_classifier.backward(retain_graph=False)
-            else:
-                loss_classifier.backward(retain_graph=True)
-            g = model.classifier.weight.grad.view([1, 1, 256, 100])
-
-            if grads.size()[0] != 0:
-                grads = torch.cat((grads, g))
-            else:
-                grads = g
-
-        grads = torch.autograd.Variable(torch.from_numpy(grads.data.cpu().numpy()).cuda())
-        c = torch.autograd.Variable(torch.from_numpy(correct.view([-1, 1]).data.cpu().numpy()).cuda())
-        preds = torch.autograd.Variable(torch.from_numpy(pred_outputs.data.cpu().numpy()).cuda())
-
-        member_output = inference_model(grads, infer_input_one_hot, c, preds)
-
-        is_member_labels = torch.from_numpy(
-            np.reshape(np.concatenate((np.zeros(v_mem_input.size(0)), np.ones(v_nonmem_input.size(0)))), [-1, 1])
-        ).cuda()
-
-        v_is_member_labels = torch.autograd.Variable(is_member_labels).type(torch.cuda.FloatTensor)
-
-        loss = criterion(member_output, v_is_member_labels)
-
-        # measure accuracy and record loss
-        prec1 = np.mean((member_output.data.cpu().numpy() > 0.5) == v_is_member_labels.data.cpu().numpy())
-        losses.update(loss.data, model_input.size(0))
-        top1.update(prec1, model_input.size(0))
-
-        # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        # plot progress
-        if batch_idx % 10 == 0:
-            pbar.write(
-                "({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | | Loss: {loss:.4f} | top1: {top1: .4f} ".format(
-                    batch=batch_idx,
-                    size=len(trainloader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                )
-            )
-
-    return (losses.avg, top1.avg)
-
-
-def mia_test(
-    trainloader,
-    testloader,
-    model,
-    inference_model,
-    classifier_criterion,
-    criterion,
-    classifier_optimizer,
-    pbar,
-    num_batchs=1000,
-):
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-    top1 = AverageMeter()
-    mtop1_a = AverageMeter()
-    mtop5_a = AverageMeter()
-
-    inference_model.eval()
-    model.eval()
-    # switch to evaluate mode
-
-    end = time.time()
-    for batch_idx, ((mem_input, mem_target), (nonmem_input, nonmem_target)) in enumerate(zip(trainloader, testloader)):
-        # measure data loading time
-        if batch_idx > num_batchs:
-            break
-        data_time.update(time.time() - end)
-        mem_input = mem_input.cuda()
-        nonmem_input = nonmem_input.cuda()
-        mem_target = mem_target.cuda()
-        nonmem_target = nonmem_target.cuda()
-
-        v_mem_input = torch.autograd.Variable(mem_input)
-        v_nonmem_input = torch.autograd.Variable(nonmem_input)
-        v_mem_target = torch.autograd.Variable(mem_target)
-        v_nonmem_target = torch.autograd.Variable(nonmem_target)
-
-        # compute output
-        model_input = torch.cat((v_mem_input, v_nonmem_input))
-        pred_outputs = model(model_input)
-
-        infer_input = torch.cat((v_mem_target, v_nonmem_target))
-
-        one_hot_tr = torch.from_numpy((np.zeros((infer_input.size(0), 100)))).cuda().type(torch.cuda.FloatTensor)
-        target_one_hot_tr = one_hot_tr.scatter_(1, infer_input.type(torch.cuda.LongTensor).view([-1, 1]).data, 1)
-        infer_input_one_hot = torch.autograd.Variable(target_one_hot_tr)
-
-        correct = torch.sum(pred_outputs * infer_input_one_hot, dim=1)
-        grads = torch.zeros(0)
-
-        for i in range(2 * batch_size):
-            loss_classifier = classifier_criterion(pred_outputs[i].view([1, -1]), infer_input[i].view([-1]))
-            classifier_optimizer.zero_grad()
-            if i == (2 * batch_size) - 1:
-                loss_classifier.backward(retain_graph=False)
-            else:
-                loss_classifier.backward(retain_graph=True)
-            g = model.classifier.weight.grad.view([1, 1, 256, 100])
-
-            if grads.size()[0] != 0:
-                grads = torch.cat((grads, g))
-            else:
-                grads = g
-
-        grads = torch.autograd.Variable(torch.from_numpy(grads.data.cpu().numpy()).cuda())
-        c = torch.autograd.Variable(torch.from_numpy(correct.view([-1, 1]).data.cpu().numpy()).cuda())
-        preds = torch.autograd.Variable(torch.from_numpy(pred_outputs.data.cpu().numpy()).cuda())
-
-        member_output = inference_model(grads, infer_input_one_hot, c, preds)
-
-        is_member_labels = torch.from_numpy(
-            np.reshape(np.concatenate((np.zeros(v_mem_input.size(0)), np.ones(v_nonmem_input.size(0)))), [-1, 1])
-        ).cuda()
-
-        v_is_member_labels = torch.autograd.Variable(is_member_labels).type(torch.cuda.FloatTensor)
-
-        loss = criterion(member_output, v_is_member_labels)
-
-        # measure accuracy and record loss
-        prec1 = np.mean((member_output.data.cpu().numpy() > 0.5) == v_is_member_labels.data.cpu().numpy())
-        losses.update(loss.data, model_input.size(0))
-        top1.update(prec1, model_input.size(0))
-
-        # compute gradient and do SGD step
-
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        # plot progress
-        if batch_idx % 10 == 0:
-            pbar.write(
-                "({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | | Loss: {loss:.4f} | top1: {top1: .4f} ".format(
-                    batch=batch_idx,
-                    size=len(trainloader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                )
-            )
-
-    return (losses.avg, top1.avg)
-
-
-def save_checkpoint(state, is_best, checkpoint="checkpoint", filename="checkpoint.pth.tar"):
-    filepath = os.path.join(checkpoint, filename)
-    torch.save(state, filepath)
-    if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, "model_best.pth.tar"))
-
-
-def adjust_learning_rate(optimizer, epoch, state):
-    if epoch in [20, 40]:
-        state["lr"] *= 0.1
-        for param_group in optimizer.param_groups:
-            param_group["lr"] = state["lr"]
-
-
-def save_checkpoint_adversary(state, is_best, checkpoint="checkpoint", filename="checkpoint.pth.tar"):
-    filepath = os.path.join(checkpoint, filename)
-    torch.save(state, filepath)
-    if is_best:
-        shutil.copyfile(filepath, os.path.join(checkpoint, "model_adversary_best.pth.tar"))
+    return losses.avg, top1.avg
 
 
 if __name__ == "__main__":
     mp.set_start_method("spawn")
     mp.set_sharing_strategy("file_system")
 
-    dataset = "cifar100"
+    dataset_name = "cifar100"
     checkpoint_path = "checkpoints_100cifar_alexnet_white_fed"
-    train_batch = 100
-    test_batch = 100
     lr = 0.05
-    epochs = 100
-    state = {}
-    state["lr"] = lr
-    cudnn.benchmark = True
-    start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-
-    if not os.path.isdir(checkpoint_path):
-        mkdir_p(checkpoint_path)
+    num_models = 1
+    epochs = 50
 
     # Data
-    print("==> Preparing dataset %s" % dataset)
+    print("==> Preparing dataset %s" % dataset_name)
 
-    if dataset == "cifar10":
+    if dataset_name == "cifar10":
         dataloader = datasets.CIFAR10
         num_classes = 10
     else:
         dataloader = datasets.CIFAR100
         num_classes = 100
 
-    # Load dataset for membership inference
-    title = "cifar-100"
-
     trainset = dataloader(root="./data100", train=True, download=True, transform=transforms.ToTensor())
-    trainloader = data.DataLoader(trainset, batch_size=train_batch, shuffle=True)
+    trainloader = data.DataLoader(trainset, batch_size=100, shuffle=True)
 
     testset = dataloader(root="./data100", train=False, download=True, transform=transforms.ToTensor())
-    testloader = data.DataLoader(testset, batch_size=test_batch, shuffle=True)
+    testloader = data.DataLoader(testset, batch_size=100, shuffle=True)
 
-    r = np.arange(50000)
-    np.random.shuffle(r)
-
-    private_trainset_member = []
-    private_trainset_nonmember = []
-
-    private_testset_member = []
-    private_testset_nonmember = []
-
+    trainset_member, testset_member = [], []
+    r = np.random.permutation(50000)
     for i in range(25000):
-        private_trainset_member.append(trainset[r[i]])
-
+        trainset_member.append(trainset[r[i]])
     for i in range(25000, 50000):
-        private_testset_member.append(trainset[r[i]])
+        testset_member.append(trainset[r[i]])
 
-    r = np.arange(10000)
-    np.random.shuffle(r)
-
+    trainset_nonmember, testset_nonmember = [], []
+    r = np.random.permutation(10000)
     for i in range(5000):
-        private_trainset_nonmember.append(testset[r[i]])
-
+        trainset_nonmember.append(testset[r[i]])
     for i in range(5000, 10000):
-        private_testset_nonmember.append(testset[r[i]])
+        testset_nonmember.append(testset[r[i]])
 
     batch_size = 20
 
-    private_trainloader_member = data.DataLoader(private_trainset_member, batch_size=batch_size, shuffle=True)
-    private_trainloader_nonmember = data.DataLoader(private_trainset_nonmember, batch_size=batch_size, shuffle=True)
+    trainloader_member = data.DataLoader(trainset_member, batch_size=batch_size, shuffle=True)
+    trainloader_nonmember = data.DataLoader(trainset_nonmember, batch_size=batch_size, shuffle=True)
 
-    private_testloader_member = data.DataLoader(private_testset_member, batch_size=batch_size, shuffle=True)
-    private_testloader_nonmember = data.DataLoader(private_testset_nonmember, batch_size=batch_size, shuffle=True)
+    testloader_member = data.DataLoader(testset_member, batch_size=batch_size, shuffle=True)
+    testloader_nonmember = data.DataLoader(testset_nonmember, batch_size=batch_size, shuffle=True)
 
     # load models for membership inference
     print("==> Loading models")
 
     criterion = nn.CrossEntropyLoss()
 
-    net = AlexNet(num_classes)
-    net = net.cuda()
-    checkpoint = torch.load("checkpoints_100cifar_alexnet_white_fed/epoch_%d_main" % 299)
-    net.load_state_dict(checkpoint["state_dict"])
-    optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=5e-4)
+    nets = []
+    optimizers = []
+    for _ in range(num_models):
+        net = AlexNet(num_classes)
+        net = net.cuda()
+        checkpoint = torch.load("checkpoints_100cifar_alexnet_white_fed/epoch_%d_main" % 299)
+        net.load_state_dict(checkpoint["state_dict"])
+        optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=5e-4)
+
+        nets.append(net)
+        optimizers.append(optimizer)
 
     # create attack model
     criterion_attack = nn.MSELoss()
-    attack_mdoel = InferenceAttack_HZ(100)
-    attack_mdoel = attack_mdoel.cuda()
-    optimizer_attack = optim.Adam(attack_mdoel.parameters(), lr=0.0001)
+    attack_model = NasrAttackV2(100, 1)
+    attack_model = attack_model.cuda()
+    optimizer_attack = optim.Adam(attack_model.parameters(), lr=0.0001)
 
-    print("==> attack training")
-    with tqdm(range(5)) as pbar:
+    print("==> Training attack")
+    with tqdm(range(epochs)) as pbar:
         for epoch in pbar:
-            mia_train(
-                private_trainloader_member,
-                private_trainloader_nonmember,
-                net,
-                attack_mdoel,
-                criterion,
-                criterion_attack,
-                optimizer,
-                optimizer_attack,
-                pbar,
+            loss, train_acc = mia(
+                memloader=trainloader_member,
+                nonmemloader=trainloader_nonmember,
+                attack_model=attack_model,
+                criterion=criterion_attack,
+                optimizer=optimizer_attack,
+                classifier_criterion=criterion,
+                classifiers=nets,
+                classifier_optimizers=optimizers,
             )
-            bb = mia_test(
-                private_testloader_member,
-                private_testloader_nonmember,
-                net,
-                attack_mdoel,
-                criterion,
-                criterion_attack,
-                optimizer,
-                pbar,
-            )
-            pbar.write(f"{bb}")
+            pbar.write(f"Loss: {loss:.4f} | Train Accuracy: {train_acc: .4f}")
+            if (epoch + 1) % 5 == 0:
+                _, test_acc = mia(
+                    memloader=testloader_member,
+                    nonmemloader=testloader_nonmember,
+                    attack_model=attack_model,
+                    criterion=criterion_attack,
+                    optimizer=None,  # no attack optimizer => runs test without optimizing
+                    classifier_criterion=criterion,
+                    classifiers=nets,
+                    classifier_optimizers=optimizers,
+                    num_batches=100,
+                )
+                pbar.write(f"Test accuracy: {test_acc:.4f}")
 
-            save_checkpoint_adversary(
-                {
-                    "epoch": epoch + 1,
-                    "state_dict": attack_mdoel.state_dict(),
-                    "optimizer": optimizer_attack.state_dict(),
-                },
-                True,
-                checkpoint=checkpoint_path,
-            )
+                torch.save(
+                    {
+                        "epoch": epoch + 1,
+                        "state_dict": attack_model.state_dict(),
+                        "optimizer": optimizer_attack.state_dict(),
+                    },
+                    f"{checkpoint_path}/nasr_attack_model_{dataset_name}_{nets[0].__class__.__name__}_{epoch+1}.pt",
+                )
