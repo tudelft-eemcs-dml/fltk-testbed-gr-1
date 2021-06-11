@@ -3,6 +3,7 @@ import json
 import matplotlib
 import numpy as np
 from matplotlib import pyplot as plt
+from numpy import mean
 from sklearn.metrics import auc, roc_curve
 
 def plotMemberHisto(target, prob_succes, name):
@@ -17,7 +18,7 @@ def plotMemberHisto(target, prob_succes, name):
             if (target[i][j] == 1):
                 mpreds.append(prob_succes[i][j][1])
             else:
-                nmpreds.append(prob_succes[i][j][0])
+                nmpreds.append(prob_succes[i][j][1])
 
     # Creates a histogram for Membership Probability
     fig = plt.figure(1)
@@ -54,10 +55,7 @@ def plotRoc(target, probs, name):
     for i in range(0, len(target)):
         for j in range(0, len(target[i])):
             new_target.append(target[i][j])
-            if (target[i][j] == 1):
-                new_probs.append(probs[i][j][1])
-            else:
-                new_probs.append(probs[i][j][0])
+            new_probs.append(probs[i][j][1])
     font = {"weight": "bold", "size": 10}
     matplotlib.rc("font", **font)
     fpr, tpr, _ = roc_curve(new_target, new_probs)
@@ -73,13 +71,9 @@ def plotRoc(target, probs, name):
     plt.savefig(f"output/{name}_roc.png")
     plt.close()
 
-
 file = "./output/mirage/texas-MIA.json"
 f = open(file, 'r')
 results = json.load(f)
-print(list(results.keys()))
 for key in list(results.keys()):
-    print(results[key]["RoundedPredictions"][0])
-    print(results[key]["Predictions"][0])
     plotRoc(results[key]["TestLabels"], results[key]["Predictions"], key)
     plotMemberHisto(results[key]["TestLabels"], results[key]["Predictions"], key)

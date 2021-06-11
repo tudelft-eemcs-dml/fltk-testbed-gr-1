@@ -210,7 +210,7 @@ class MIAttackClassifierLogReg(MIAttackClassifier):
     """ Membership inference attack based on shadow modelling using a LogisticRegression Classifier"""
 
     def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(LogisticRegression(max_iter=500), metadata, priorProbabilities, FeatureSet)
+        super().__init__(LogisticRegression(max_iter=300), metadata, priorProbabilities, FeatureSet)
 
 
 class MIAttackClassifierRandomForest(MIAttackClassifier):
@@ -520,7 +520,7 @@ def plotMemberHisto(target, prob_succes, name):
             if (target[i][j] == 1):
                 mpreds.append(prob_succes[i][j][1])
             else:
-                nmpreds.append(prob_succes[i][j][0])
+                nmpreds.append(prob_succes[i][j][1])
 
     # Creates a histogram for Membership Probability
     fig = plt.figure(1)
@@ -558,10 +558,7 @@ def plotRoc(target, probs, name):
     for i in range(0, len(target)):
         for j in range(0, len(target[i])):
             new_target.append(target[i][j])
-            if (target[i][j] == 1):
-                new_probs.append(probs[i][j][1])
-            else:
-                new_probs.append(probs[i][j][0])
+            new_probs.append(probs[i][j][1])
     font = {"weight": "bold", "size": 10}
     matplotlib.rc("font", **font)
     fpr, tpr, _ = roc_curve(new_target, new_probs)
