@@ -10,9 +10,9 @@ class DistCIFAR100Dataset(DistDataset):
         self.get_args().get_logger().debug("Loading CIFAR100 train data")
 
         normalize = transforms.Normalize(mean=[0.507, 0.487, 0.441], std=[0.267, 0.256, 0.276])
-        transform = transforms.Compose(
-            [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, 4), transforms.ToTensor(), normalize]
-        )
+        transform = transforms.ToTensor()  # transforms.Compose(
+        #     [transforms.RandomHorizontalFlip(), transforms.RandomCrop(32, 4), transforms.ToTensor(), normalize]
+        # )
         self.train_dataset = datasets.CIFAR100(
             root=self.get_args().get_data_path(), train=True, download=True, transform=transform
         )

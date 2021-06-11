@@ -1,3 +1,6 @@
+fltk/synthpriv/membershipWhiteboxAttacks/
+!fltk/synthpriv/membershipWhiteboxAttacks/ATTACK-ALEXNET-grad_fed_local.py
+
 venv
 venv-*
 default_models

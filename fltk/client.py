@@ -222,9 +222,9 @@ class Client:
             # print statistics
             running_loss += loss.item()
             if i % self.args.get_log_interval() == 0:
-                self.args.get_logger().info(
-                    "[%d, %5d] loss: %.3f" % (epoch, i, running_loss / self.args.get_log_interval())
-                )
+                # self.args.get_logger().info(
+                #     "[%d, %5d] loss: %.3f" % (epoch, i, running_loss / self.args.get_log_interval())
+                # )
                 final_running_loss = running_loss / self.args.get_log_interval()
                 running_loss = 0.0
 
@@ -266,10 +266,10 @@ class Client:
 
         self.args.get_logger().debug("Test set: Accuracy: {}/{} ({:.0f}%)".format(correct, total, accuracy))
         self.args.get_logger().debug("Test set: Loss: {}".format(loss))
-        self.args.get_logger().debug("Classification Report:\n" + classification_report(targets_, pred_))
-        self.args.get_logger().debug("Confusion Matrix:\n" + str(confusion_mat))
-        self.args.get_logger().debug("Class precision: {}".format(str(class_precision)))
-        self.args.get_logger().debug("Class recall: {}".format(str(class_recall)))
+        # self.args.get_logger().debug("Classification Report:\n" + classification_report(targets_, pred_))
+        # self.args.get_logger().debug("Confusion Matrix:\n" + str(confusion_mat))
+        # self.args.get_logger().debug("Class precision: {}".format(str(class_precision)))
+        # self.args.get_logger().debug("Class recall: {}".format(str(class_recall)))
 
         return accuracy, loss, class_precision, class_recall
 

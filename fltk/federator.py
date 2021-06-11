@@ -143,7 +143,7 @@ class Federator:
             epoch_data, weights = res[1].wait()
             self.client_data[epoch_data.client_id].append(epoch_data)
             logging.info(f"{res[0]} had a loss of {epoch_data.loss}")
-            logging.info(f"{res[0]} had a epoch data of {epoch_data}")
+            # logging.info(f"{res[0]} had a epoch data of {epoch_data}")
 
             res[0].tb_writer.add_scalar(
                 "training loss",
@@ -224,8 +224,8 @@ class Federator:
             print(f"Running epoch {epoch}")
             self.remote_run_epoch(epoch_size)
             addition += 1
-        logging.info("Printing client data")
-        print(self.client_data)
+        # logging.info("Printing client data")
+        # print(self.client_data)
 
         logging.info(f"Saving data")
         self.save_epoch_data()

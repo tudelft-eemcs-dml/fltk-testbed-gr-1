@@ -69,7 +69,11 @@ if __name__ == "__main__":
             target_model = AlexNet()
         dataset = DistCIFAR100Dataset(cfg)
 
-    target_model.load_state_dict(torch.load(args.model_checkpoint))
+    try:
+        target_model.load_state_dict(torch.load(args.model_checkpoint))
+    except:
+        target_model.load_state_dict(torch.load(args.model_checkpoint)["state_dict"])
+
     print("Target model:")
     for i, (name, mod) in enumerate(target_model.named_modules()):
         print(i, name, mod.__class__.__name__)
