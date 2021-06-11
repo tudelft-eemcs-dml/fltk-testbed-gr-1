@@ -19,6 +19,7 @@ from sklearn.model_selection import ShuffleSplit
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
+from tqdm import tqdm
 
 from .feature_sets.bayes import CorrelationsFeatureSet
 from .feature_sets.independent_histograms import HistogramFeatureSet
@@ -457,7 +458,9 @@ def evaluate_mia(
             )
             for tid in targetIDs
         ]
-        resultsList = pool.map(worker_run_mia, tasks)
+        resultsList = []
+        for res in tqdm(pool.imap_unordered(worker_run_mia, tasks), total=len(tasks)):
+            resultsList.append(res)
 
     results = {
         AM.__name__: {

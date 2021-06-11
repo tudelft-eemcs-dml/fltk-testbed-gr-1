@@ -3,7 +3,7 @@
 total_epochs: 300
 epochs_per_cycle: 1
 wait_for_clients: true
-batch_size: 100
+batch_size: 32
 weight_decay: 0.0005
 net: AlexNet
 dataset: cifar100

@@ -13,11 +13,163 @@ import torchvision as tv
 import yaml
 from fltk.datasets.distributed.cifar100 import DistCIFAR100Dataset
 from fltk.nets.cifar_100_resnet import Cifar100ResNet
+from fltk.synthpriv.attacks.feature_sets.whitebox import WhiteBoxFeatureSet
+from fltk.synthpriv.attacks.mirage import *
 from fltk.synthpriv.attacks.nasr2 import NasrAttackV2, attack
 from fltk.synthpriv.config import SynthPrivConfig
 from fltk.synthpriv.datasets import *
 from fltk.synthpriv.models import *
+from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+
+def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path):
+    batch_size = 20
+    trainloader_member = data.DataLoader(trainset_member, batch_size=batch_size, shuffle=True)
+    trainloader_nonmember = data.DataLoader(trainset_nonmember, batch_size=batch_size, shuffle=True)
+    testloader_member = data.DataLoader(testset_member, batch_size=batch_size, shuffle=True)
+    testloader_nonmember = data.DataLoader(testset_nonmember, batch_size=batch_size, shuffle=True)
+
+    last_layer_shape = list(target_model.parameters())[-2].shape  # -2 ==> final linear layer's weight
+    attack_model = NasrAttackV2(num_classes=num_classes, gradient_shape=last_layer_shape).cuda()
+
+    epochs = 100
+    criterion = nn.MSELoss()
+    optimizer = optim.Adam(attack_model.parameters(), lr=0.0001)
+    classifier_criterion = nn.CrossEntropyLoss()
+    classifiers = [target_model]
+    classifier_optimizers = [optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)]
+
+    with tqdm(range(epochs)) as pbar:
+        for epoch in pbar:
+            loss, train_acc = attack(
+                attack_model=attack_model,
+                memloader=trainloader_member,
+                nonmemloader=trainloader_nonmember,
+                criterion=criterion,
+                optimizer=optimizer,
+                classifier_criterion=classifier_criterion,
+                classifiers=classifiers,
+                classifier_optimizers=classifier_optimizers,
+            )
+            pbar.write(f"Loss: {loss:.4f} | Train Accuracy: {train_acc: .4f}")
+            if (epoch + 1) % 10 == 0:
+                _, test_acc = attack(
+                    attack_model=attack_model,
+                    memloader=testloader_member,
+                    nonmemloader=testloader_nonmember,
+                    criterion=criterion,
+                    optimizer=None,  # no attack optimizer => runs test without optimizing
+                    classifier_criterion=classifier_criterion,
+                    classifiers=classifiers,
+                    classifier_optimizers=classifier_optimizers,
+                    num_batches=100,
+                )
+                pbar.write(f"Test accuracy: {test_acc:.4f}")
+
+                torch.save(
+                    {
+                        "epoch": epoch + 1,
+                        "state_dict": attack_model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                    },
+                    f"{save_path}_{epoch+1}.pt",
+                )
+
+
+def mirage(
+    trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path
+):
+    attack_model = "RandomForest"  # ["RandomForest", "LogReg", "LinearSVC", "SVC", "KNN", "ANY"]
+    nIter = 25
+    nTargets = 50
+    sizeRawA = 500
+    nShadows = 10
+    sizeRawTest = 300
+    prior = {"IN": 0.5, "OUT": 0.5}
+
+    memberDF = pd.DataFrame(np.concatenate((trainset_member, testset_member)))
+
+    targetIDs = np.random.choice(range(len(trainset_nonmember)), size=nTargets, replace=False).tolist()
+    targets = pd.DataFrame(trainset_nonmember[targetIDs], index=targetIDs)
+
+    attackDataIdx = np.random.choice(range(len(trainset_member)), size=sizeRawA, replace=False).tolist()
+    testRawIndices = [
+        np.random.choice(
+            range(len(trainset_member), len(trainset_member) + len(testset_member)), size=sizeRawTest, replace=False
+        ).tolist()
+        for _ in range(nIter)
+    ]
+
+    alldata = np.concatenate((trainset_member, testset_member, trainset_nonmember, testset_nonmember))
+    metadata = {
+        "categorical_columns": [],
+        "ordinal_columns": [],
+        "continuous_columns": list(range(len(memberDF.columns))),
+        "columns": [
+            {
+                "name": n,
+                "type": "continuous",
+                "min": alldata[:, n].min(),
+                "max": alldata[:, n].max(),
+            }
+            for n in range(len(memberDF.columns))
+        ],
+    }
+    FeatureList = [
+        NaiveFeatureSet(DataFrame),
+        # HistogramFeatureSet(DataFrame, metadata),
+        CorrelationsFeatureSet(DataFrame, metadata),
+        # EnsembleFeatureSet(DataFrame, metadata),
+        # WhiteBoxFeatureSet(
+        #     metadata=metadata,
+        #     models=[target_model],
+        #     optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
+        #     criterion=nn.CrossEntropyLoss(),
+        #     num_classes=num_classes,
+        # ),
+    ]
+
+    prior = {LABEL_IN: prior["IN"], LABEL_OUT: prior["OUT"]}
+
+    if attack_model == "RandomForest":
+        AttacksList = [MIAttackClassifierRandomForest(metadata, prior, F) for F in FeatureList]
+    elif attack_model == "LogReg":
+        AttacksList = [MIAttackClassifierLogReg(metadata, prior, F) for F in FeatureList]
+    elif attack_model == "LinearSVC":
+        AttacksList = [MIAttackClassifierLinearSVC(metadata, prior, F) for F in FeatureList]
+    elif attack_model == "SVC":
+        AttacksList = [MIAttackClassifierSVC(metadata, prior, F) for F in FeatureList]
+    elif attack_model == "KNN":
+        AttacksList = [MIAttackClassifierKNN(metadata, prior, F) for F in FeatureList]
+    elif attack_model == "ANY":
+        AttacksList = []
+        for F in FeatureList:
+            AttacksList.extend(
+                [
+                    MIAttackClassifierRandomForest(metadata, prior, F),
+                    MIAttackClassifierLogReg(metadata, prior, F),
+                    MIAttackClassifierKNN(metadata, prior, F),
+                ]
+            )
+    else:
+        raise ValueError(f"Unknown AM {attack_model}")
+
+    # Run privacy evaluation under MIA adversary
+    results = evaluate_mia(
+        AttacksList,
+        memberDF,
+        targets,
+        targetIDs,
+        attackDataIdx,
+        testRawIndices,
+        sizeRawTest,
+        nShadows,
+    )
+
+    with open(f"{save_path}.json", "w") as f:
+        json.dump(results, f)
+
 
 if __name__ == "__main__":
     seed = 42
@@ -32,6 +184,7 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("attack", choices=["nasr", "mirage"])
     parser.add_argument("dataset", choices=["purchase", "texas", "cifar", "adult"], help="Dataset to use")
     parser.add_argument("model_checkpoint", help="Target model checkpoint")
     parser.add_argument(
@@ -98,55 +251,17 @@ if __name__ == "__main__":
         trainset_nonmember.append(testset[r[i]])
         testset_nonmember.append(testset[r[i + testsize // 2]])
 
-    batch_size = 20
-    trainloader_member = data.DataLoader(trainset_member, batch_size=batch_size, shuffle=True)
-    trainloader_nonmember = data.DataLoader(trainset_nonmember, batch_size=batch_size, shuffle=True)
-    testloader_member = data.DataLoader(testset_member, batch_size=batch_size, shuffle=True)
-    testloader_nonmember = data.DataLoader(testset_nonmember, batch_size=batch_size, shuffle=True)
+    save_path = f"models/{args.attack}_attack_{args.dataset}_{target_model.__class__.__name__}"
 
-    last_layer_shape = list(target_model.parameters())[-2].shape  # -2 ==> final linear layer's weight
-    attack_model = NasrAttackV2(num_classes=num_classes, gradient_shape=last_layer_shape).cuda()
-
-    epochs = 100
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(attack_model.parameters(), lr=0.0001)
-    classifier_criterion = nn.CrossEntropyLoss()
-    classifiers = [target_model]
-    classifier_optimizers = [optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)]
-    save_path = f"models/nasr2_attack_model_{args.dataset}_{target_model.__class__.__name__}"
-
-    with tqdm(range(epochs)) as pbar:
-        for epoch in pbar:
-            loss, train_acc = attack(
-                attack_model=attack_model,
-                memloader=trainloader_member,
-                nonmemloader=trainloader_nonmember,
-                criterion=criterion,
-                optimizer=optimizer,
-                classifier_criterion=classifier_criterion,
-                classifiers=classifiers,
-                classifier_optimizers=classifier_optimizers,
-            )
-            pbar.write(f"Loss: {loss:.4f} | Train Accuracy: {train_acc: .4f}")
-            if (epoch + 1) % 10 == 0:
-                _, test_acc = attack(
-                    attack_model=attack_model,
-                    memloader=testloader_member,
-                    nonmemloader=testloader_nonmember,
-                    criterion=criterion,
-                    optimizer=None,  # no attack optimizer => runs test without optimizing
-                    classifier_criterion=classifier_criterion,
-                    classifiers=classifiers,
-                    classifier_optimizers=classifier_optimizers,
-                    num_batches=100,
-                )
-                pbar.write(f"Test accuracy: {test_acc:.4f}")
-
-                torch.save(
-                    {
-                        "epoch": epoch + 1,
-                        "state_dict": attack_model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                    },
-                    f"{save_path}_{epoch+1}.pt",
-                )
+    if args.attack == "nasr":
+        nasr(
+            trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path
+        )
+    else:
+        trainarr_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0].numpy()
+        testarr_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0].numpy()
+        trainarr_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0].numpy()
+        testarr_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[0].numpy()
+        mirage(
+            trainarr_member, testarr_member, trainarr_nonmember, testarr_nonmember, target_model, num_classes, save_path
+        )

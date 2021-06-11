@@ -128,8 +128,6 @@ def attack(
 
         labels = torch.cat((mem_target, nonmem_target))
         labels_1hot = nn.functional.one_hot(labels, num_classes=attack_model.num_classes).float()
-        print(labels_1hot.shape)
-        print(pred_outputs[0].shape)
 
         classifiers_outputs, correct_labels, model_grads = [], [], []
         for m_n in range(len(classifiers)):

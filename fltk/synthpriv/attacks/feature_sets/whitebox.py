@@ -1,33 +1,32 @@
+import numpy as np
+import pandas as pd
 import torch
 from fltk.synthpriv.attacks.feature_sets.feature_set import FeatureSet
 from fltk.synthpriv.attacks.feature_sets.model_agnostic import EnsembleFeatureSet
-import numpy as np
 
 
 class WhiteBoxFeatureSet(FeatureSet):
-    """An ensemble of features that leverages the pre-trained model"""
+    """An ensemble of features that leverages pre-trained models"""
 
-    def __init__(self, models, optimizers, criterion, datatype, metadata, nbins=10):
-        self.datatype = datatype
-        self.ensemble = EnsembleFeatureSet(datatype, metadata, nbins)
-        self.models, self.optimizers, self.criterion = models, optimizers, criterion
+    def __init__(self, metadata, models, optimizers, criterion, num_classes):
+        self.models, self.optimizers, self.criterion, self.num_classes = models, optimizers, criterion, num_classes
+        self.ensemble = EnsembleFeatureSet(pd.DataFrame, metadata, nbins=10)
 
     def extract(self, data):
         F_ensemble = self.ensemble.extract(data)
         print(F_ensemble.shape)
+
         F_whitebox = self.whitebox(data)
         print(F_whitebox.shape)
-        print(self.ensemble.extract(F_whitebox).shape)
+
         return np.concatenate([F_ensemble, F_whitebox])
 
-    def whitebox(self, data):
+    def whitebox(self, data, labels):
         predictions, correct, gradients = [], [], []
-        for batch in np.array_split(data, 20):
-            inputs = torch.from_numpy(batch.drop(target))
-            outputs = [model(inputs) for model in self.models]
+        for batch, lbls in zip(np.array_split(data, 20), np.array_split(labels, 20)):
+            outputs = [model(torch.from_numpy(batch).cuda()) for model in self.models]
 
-            labels = torch.from_numpy((batch[target]))
-            labels_1hot = torch.nn.functional.one_hot(labels, num_classes=num_classes).float()
+            labels_1hot = torch.nn.functional.one_hot(lbls, num_classes=self.num_classes).float()
 
             correct_labels = [np.sum(output * labels_1hot, dim=1).view([-1, 1]).cpu().numpy() for output in outputs]
 
@@ -35,7 +34,7 @@ class WhiteBoxFeatureSet(FeatureSet):
             for m_n in range(len(self.models)):
                 grads = []
                 for i in range(len(batch)):
-                    loss_classifier = self.criterion(outputs[m_n][i].view([1, -1]), labels[i].view([-1]))
+                    loss_classifier = self.criterion(outputs[m_n][i].view([1, -1]), lbls[i].view([-1]))
                     self.optimizers[m_n].zero_grad()
                     loss_classifier.backward(retain_graph=i < len(batch) - 1)
                     g = list(self.models[m_n].parameters())[-2].grad.flatten()
