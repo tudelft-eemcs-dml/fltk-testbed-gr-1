@@ -695,67 +695,67 @@ if __name__ == "__main__":
     testset = dataloader(root="./data100", train=False, download=True, transform=transform_test)
     testloader = data.DataLoader(testset, batch_size=test_batch, shuffle=True)
 
-    # print("==> federated training")
-    # with tqdm(range(0, 50)) as pbar:
-    #     for epoch in pbar:
-    #         for p in range(number_parties):
-    #             adjust_learning_rate(parties_optimizer[p], epoch, state[p])
+    print("==> federated training")
+    with tqdm(range(0, 50)) as pbar:
+        for epoch in pbar:
+            for p in range(number_parties):
+                adjust_learning_rate(parties_optimizer[p], epoch, state[p])
 
-    #             train_loss, train_acc = train(
-    #                 train_classifier_loader_parties[p],
-    #                 parties_model[p],
-    #                 criterion,
-    #                 parties_optimizer[p],
-    #                 pbar,
-    #                 use_cuda,
-    #             )
-    #             test_loss, test_acc = test(testloader, parties_model[p], criterion, pbar, use_cuda)
+                train_loss, train_acc = train(
+                    train_classifier_loader_parties[p],
+                    parties_model[p],
+                    criterion,
+                    parties_optimizer[p],
+                    pbar,
+                    use_cuda,
+                )
+                test_loss, test_acc = test(testloader, parties_model[p], criterion, pbar, use_cuda)
 
-    #             save_checkpoint(
-    #                 {
-    #                     "epoch": epoch + 1,
-    #                     "state_dict": parties_model[p].state_dict(),
-    #                     "acc": test_acc,
-    #                     "best_acc": False,
-    #                     "optimizer": parties_optimizer[p].state_dict(),
-    #                 },
-    #                 False,
-    #                 filename="epoch_%d_party_%d" % (epoch, p),
-    #                 checkpoint=checkpoint_path,
-    #             )
+                save_checkpoint(
+                    {
+                        "epoch": epoch + 1,
+                        "state_dict": parties_model[p].state_dict(),
+                        "acc": test_acc,
+                        "best_acc": False,
+                        "optimizer": parties_optimizer[p].state_dict(),
+                    },
+                    False,
+                    filename="epoch_%d_party_%d" % (epoch, p),
+                    checkpoint=checkpoint_path,
+                )
 
-    #         params = net_main.named_parameters()
-    #         party_dics = {}
-    #         for i in range(number_parties):
-    #             party_dics[i] = dict(parties_model[i].named_parameters())
-    #         dict_params = dict(net_main.named_parameters())
-    #         beta = 1.0 / float(number_parties)
-    #         for name, param in params:
+            params = net_main.named_parameters()
+            party_dics = {}
+            for i in range(number_parties):
+                party_dics[i] = dict(parties_model[i].named_parameters())
+            dict_params = dict(net_main.named_parameters())
+            beta = 1.0 / float(number_parties)
+            for name, param in params:
 
-    #             dict_params[name].data.copy_(sum([beta * party_dics[i][name].data for i in range(number_parties)]))
+                dict_params[name].data.copy_(sum([beta * party_dics[i][name].data for i in range(number_parties)]))
 
-    #         net_main.load_state_dict(dict_params)
-    #         for i in range(number_parties):
-    #             parties_model[i].load_state_dict(dict_params)
-    #             # parties_optimizer[i] = optim.SGD(parties_model[i].parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
+            net_main.load_state_dict(dict_params)
+            for i in range(number_parties):
+                parties_model[i].load_state_dict(dict_params)
+                # parties_optimizer[i] = optim.SGD(parties_model[i].parameters(), lr=lr, momentum=0.9, weight_decay=5e-4)
 
-    #         test_loss, test_acc = test(testloader, net_main, criterion, pbar, use_cuda)
-    #         is_best = test_acc > best_acc
+            test_loss, test_acc = test(testloader, net_main, criterion, pbar, use_cuda)
+            is_best = test_acc > best_acc
 
-    #         pbar.write(f"Epoch {epoch}: {test_acc}")
+            pbar.write(f"Epoch {epoch}: {test_acc}")
 
-    #         best_acc = max(test_acc, best_acc)
-    #         save_checkpoint(
-    #             {
-    #                 "epoch": epoch + 1,
-    #                 "state_dict": net_main.state_dict(),
-    #                 "acc": test_acc,
-    #                 "best_acc": is_best,
-    #             },
-    #             is_best,
-    #             filename="epoch_%d_main" % (epoch + 1),
-    #             checkpoint=checkpoint_path,
-    #         )
+            best_acc = max(test_acc, best_acc)
+            save_checkpoint(
+                {
+                    "epoch": epoch + 1,
+                    "state_dict": net_main.state_dict(),
+                    "acc": test_acc,
+                    "best_acc": is_best,
+                },
+                is_best,
+                filename="epoch_%d_main" % (epoch + 1),
+                checkpoint=checkpoint_path,
+            )
 
     # print("Best acc:")
     # print(best_acc)

@@ -32,8 +32,11 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("dataset", choices=["purchase", "texas", "cifar", "adult"])
-    parser.add_argument("model_checkpoint")
+    parser.add_argument("dataset", choices=["purchase", "texas", "cifar", "adult"], help="Dataset to use")
+    parser.add_argument("model_checkpoint", help="Target model checkpoint")
+    parser.add_argument(
+        "--augmentation", action="store_true", help="Whether data augmentation in the target dataset is enabled"
+    )
     args = parser.parse_args()
 
     configs = {
@@ -62,12 +65,12 @@ if __name__ == "__main__":
     elif args.dataset == "cifar":
         num_classes = 100
         if "densenet" in args.model_checkpoint.lower():
-            target_model = tv.models.densenet121()
+            target_model = tv.models.densenet121(num_classes=100)
         elif "resnet" in args.model_checkpoint.lower():
             target_model = Cifar100ResNet()
         elif "alexnet" in args.model_checkpoint.lower():
             target_model = AlexNet()
-        dataset = DistCIFAR100Dataset(cfg)
+        dataset = DistCIFAR100Dataset(cfg, augmentation=args.augmentation)
 
     try:
         target_model.load_state_dict(torch.load(args.model_checkpoint))

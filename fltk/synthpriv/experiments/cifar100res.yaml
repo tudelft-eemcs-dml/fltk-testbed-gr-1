@@ -1,6 +1,6 @@
 ---
 # Experiment configuration
-total_epochs: 100
+total_epochs: 300
 epochs_per_cycle: 1
 wait_for_clients: true
 batch_size: 100
@@ -12,10 +12,10 @@ cuda: true
 experiment_prefix: "cifar100_resnet"
 output_location: "output"
 tensor_board_active: true
-clients_per_round: 4
+clients_per_round: 3
 system:
   federator:
     hostname: "192.168.1.187"
     nic: "enp8s0"
   clients:
-    amount: 4
+    amount: 3

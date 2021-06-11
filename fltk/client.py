@@ -178,7 +178,7 @@ class Client:
         :type new_params: dict
         """
         self.net.load_state_dict(copy.deepcopy(new_params), strict=True)
-        self.remote_log(f"Weigths of the model are updated")
+        # self.remote_log(f"Weights of the model are updated")
 
     def load_default_model(self):
         """
@@ -200,7 +200,7 @@ class Client:
 
         # save model
         if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0 and self.id == "client1":
-            self.save_model(epoch, self.args.get_epoch_save_start_suffix())
+            self.save_model(epoch, "main")
 
         running_loss = 0.0
         final_running_loss = 0.0
@@ -231,7 +231,7 @@ class Client:
         self.scheduler.step()
 
         # save model
-        if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0 and self.id == "client1":
+        if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0:  # and self.id == "client1":
             self.save_model(epoch, self.args.get_epoch_save_end_suffix())
 
         return final_running_loss, self.get_nn_parameters()

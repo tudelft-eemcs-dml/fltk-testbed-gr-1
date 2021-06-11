@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import torch
+from torch.utils.data.sampler import RandomSampler
 from fltk.datasets.distributed.dataset import DistDataset
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
@@ -21,9 +22,11 @@ class BaseDistDataset(DistDataset):
 
     def init_train_dataset(self):
         self.train_sampler = (
-            DistributedSampler(self.train_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size())
+            DistributedSampler(
+                self.train_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size(), shuffle=True
+            )
             if self.args.get_distributed()
-            else None
+            else RandomSampler(self.train_dataset)
         )
         self.train_loader = DataLoader(
             self.train_dataset,
@@ -32,14 +35,15 @@ class BaseDistDataset(DistDataset):
             num_workers=self.n_workers,
             prefetch_factor=int(self.args.batch_size / self.n_workers),
             pin_memory=True,
-            shuffle=True
         )
 
     def init_test_dataset(self):
         self.test_sampler = (
-            DistributedSampler(self.test_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size())
+            DistributedSampler(
+                self.test_dataset, rank=self.args.get_rank(), num_replicas=self.args.get_world_size(), shuffle=True
+            )
             if self.args.get_distributed()
-            else None
+            else RandomSampler(self.test_dataset)
         )
         self.test_loader = DataLoader(
             self.test_dataset,
@@ -48,7 +52,6 @@ class BaseDistDataset(DistDataset):
             num_workers=self.n_workers,
             prefetch_factor=int(self.args.batch_size / self.n_workers),
             pin_memory=True,
-            shuffle=True
         )
 
     def load_train_dataset(self):

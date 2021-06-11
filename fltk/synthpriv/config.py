@@ -7,6 +7,7 @@ from fltk.datasets.distributed.cifar100 import DistCIFAR100Dataset
 from fltk.synthpriv.datasets import *
 from fltk.synthpriv.models import *
 from fltk.util.base_config import BareConfig
+from functools import partial
 
 
 class SynthPrivConfig(BareConfig):
@@ -16,7 +17,7 @@ class SynthPrivConfig(BareConfig):
         self.available_nets["AdultMLP"] = AdultMLP
         self.available_nets["TexasMLP"] = TexasMLP
         self.available_nets["PurchaseMLP"] = PurchaseMLP
-        self.available_nets["DenseNet"] = torchvision.models.densenet121
+        self.available_nets["DenseNet"] = partial(torchvision.models.densenet121, num_classes=100)
         self.available_nets["AlexNet"] = AlexNet
         self.available_nets["PurchaseMLP"] = PurchaseMLP
         self.optimizer = torch.optim.Adam

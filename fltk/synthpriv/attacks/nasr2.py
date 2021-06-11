@@ -41,7 +41,7 @@ class NasrAttackV2(nn.Module):
 
         self.grad_out, self.grad_in = gradient_shape
 
-        grad_conv_channels = 1000
+        grad_conv_channels = 512
         self.grads = nn.Sequential(
             nn.Dropout(p=0.2),
             nn.Conv2d(1, grad_conv_channels, kernel_size=(1, self.grad_out), stride=1),
@@ -128,6 +128,8 @@ def attack(
 
         labels = torch.cat((mem_target, nonmem_target))
         labels_1hot = nn.functional.one_hot(labels, num_classes=attack_model.num_classes).float()
+        print(labels_1hot.shape)
+        print(pred_outputs[0].shape)
 
         classifiers_outputs, correct_labels, model_grads = [], [], []
         for m_n in range(len(classifiers)):
