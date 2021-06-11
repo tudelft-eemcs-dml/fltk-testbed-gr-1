@@ -3,7 +3,7 @@
 total_epochs: 50
 epochs_per_cycle: 1
 wait_for_clients: true
-batch_size: 16
+batch_size: 100
 net: PurchaseMLP
 dataset: purchase
 # Use cuda is available; setting to false will force CPU

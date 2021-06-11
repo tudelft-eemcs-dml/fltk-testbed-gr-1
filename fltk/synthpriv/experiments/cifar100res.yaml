@@ -3,7 +3,7 @@
 total_epochs: 100
 epochs_per_cycle: 1
 wait_for_clients: true
-batch_size: 64
+batch_size: 100
 weight_decay: 0.0005
 net: Cifar100ResNet
 dataset: cifar100
