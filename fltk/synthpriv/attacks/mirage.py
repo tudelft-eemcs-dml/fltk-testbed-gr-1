@@ -2,11 +2,15 @@
 
 import json
 import multiprocessing
+import os
 from argparse import ArgumentParser
 from multiprocessing import Pool
 from os import path
 
+import matplotlib
+import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 from numpy import arange, array, concatenate, mean, ndarray, round, stack
 from numpy.random import choice
 from pandas import DataFrame
@@ -147,7 +151,9 @@ class MIAttackClassifier:
         else:
             testData = stack([convert_df_to_array(s, self.metadata).flatten() for s in testData])
 
-        return round(self.AttackClassifier.predict(testData), 0).astype(int).tolist()
+        rounded_prediction = self.AttackClassifier.predict(testData)
+        prediction_prob = self.AttackClassifier.predict_proba(testData)
+        return [prediction_prob.astype(float).tolist(), round(rounded_prediction, 0).astype(int).tolist()]
 
     def get_probability_of_success(self, testData, secret):
         """Calculate probability that attacker correctly predicts whether target was present in model's training data
@@ -155,7 +161,6 @@ class MIAttackClassifier:
         :param testData: ndarray or DataFrame: A synthetic dataset
         :param secret: int: Target's true secret. Either LABEL_IN=1 or LABEL_OUT=0
         """
-
         assert (
             self.trained
         ), "Attack must first be trained on some random data before can predict membership of target data"
@@ -166,7 +171,6 @@ class MIAttackClassifier:
             testData = stack([convert_df_to_array(s, self.metadata).flatten() for s in testData])
 
         probs = self.AttackClassifier.predict_proba(testData)
-
         return [p[s] for p, s in zip(probs, secret)]
 
     def _impute_missing_values(self, df):
@@ -206,7 +210,7 @@ class MIAttackClassifierLogReg(MIAttackClassifier):
     """ Membership inference attack based on shadow modelling using a LogisticRegression Classifier"""
 
     def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(LogisticRegression(), metadata, priorProbabilities, FeatureSet)
+        super().__init__(LogisticRegression(max_iter=500), metadata, priorProbabilities, FeatureSet)
 
 
 class MIAttackClassifierRandomForest(MIAttackClassifier):
@@ -351,7 +355,9 @@ def run_mia(Attack, testData, testLabels, targetID, nr):
     privGain = [get_record_privacy_gain(plR, plS) for plR, plS in zip(privLossRaw, privLossSyn)]
 
     predictions = Attack.attack(testData)
-    fp, tn, fn, tp = get_fp_tn_fn_tp(predictions, testLabels)
+    rounded_prediction = predictions[1]
+    predictions = predictions[0]
+    fp, tn, fn, tp = get_fp_tn_fn_tp(rounded_prediction, testLabels)
 
     results = {
         "TargetID": [targetID for _ in testLabels],
@@ -360,10 +366,13 @@ def run_mia(Attack, testData, testLabels, targetID, nr):
         "RecordPrivacyLossSyn": privLossSyn,
         "RecordPrivacyLossRaw": privLossRaw,
         "RecordPrivacyGain": privGain,
-        "Accuracy": [get_attack_accuracy(tp, tn, len(predictions))],
+        "Accuracy": [get_attack_accuracy(tp, tn, len(rounded_prediction))],
         "Precision": [get_attack_precision(fp, tn)],
         "Recall": [get_attack_recall(tp, fn)],
-        "AUC": [get_auc(testLabels, predictions)],
+        "AUC": [get_auc(testLabels, rounded_prediction)],
+        "TestLabels": [testLabels],
+        "RoundedPredictions": [rounded_prediction],
+        "Predictions": [predictions],
     }
 
     return results
@@ -404,6 +413,9 @@ def worker_run_mia(params):
             "Precision": [],
             "Recall": [],
             "AUC": [],
+            "TestLabels": [],
+            "RoundedPredictions": [],
+            "Predictions": [],
         }
         for AM in attacksList
     }
@@ -433,14 +445,14 @@ def worker_run_mia(params):
 
 
 def evaluate_mia(
-    attacksList,
-    rawWithoutTargets,
-    targetRecords,
-    targetIDs,
-    attackDataIdx,
-    testRawIndices,
-    sizeRawTest,
-    nShadows,
+        attacksList,
+        rawWithoutTargets,
+        targetRecords,
+        targetIDs,
+        attackDataIdx,
+        testRawIndices,
+        sizeRawTest,
+        nShadows,
 ):
     # Train and test MIA per target
     with Pool(processes=PROCESSES) as pool:
@@ -471,6 +483,9 @@ def evaluate_mia(
             "Precision": [],
             "Recall": [],
             "AUC": [],
+            "TestLabels": [],
+            "RoundedPredictions": [],
+            "Predictions": [],
         }
         for AM in attacksList
     }
@@ -491,6 +506,76 @@ def evaluate_mia(
         print()
 
     return results
+
+
+def plotMemberHisto(target, prob_succes, name):
+    font = {"weight": "bold", "size": 10}
+    matplotlib.rc("font", **font)
+
+    mpreds = []
+    nmpreds = []
+
+    for i in range(0, len(target)):
+        for j in range(0, len(target[i])):
+            if (target[i][j] == 1):
+                mpreds.append(prob_succes[i][j][1])
+            else:
+                nmpreds.append(prob_succes[i][j][0])
+
+    # Creates a histogram for Membership Probability
+    fig = plt.figure(1)
+    plt.hist(
+        np.array(mpreds).flatten(),
+        color="xkcd:blue",
+        alpha=0.7,
+        bins=20,
+        histtype="bar",
+        range=(0, 1),
+        weights=(np.ones_like(mpreds) / len(mpreds)),
+        label="Training Data (Members)",
+    )
+    plt.hist(
+        np.array(nmpreds).flatten(),
+        color="xkcd:light blue",
+        alpha=0.7,
+        bins=20,
+        histtype="bar",
+        range=(0, 1),
+        weights=(np.ones_like(nmpreds) / len(nmpreds)),
+        label="Population Data (Non-members)",
+    )
+    plt.xlabel("Membership Probability")
+    plt.ylabel("Fraction")
+    plt.title("Privacy Risk")
+    plt.legend(loc="upper left")
+    plt.savefig(f"{name}_privacy_risk.png")
+    plt.close()
+
+
+def plotRoc(target, probs, name):
+    new_target = []
+    new_probs = []
+    for i in range(0, len(target)):
+        for j in range(0, len(target[i])):
+            new_target.append(target[i][j])
+            if (target[i][j] == 1):
+                new_probs.append(probs[i][j][1])
+            else:
+                new_probs.append(probs[i][j][0])
+    font = {"weight": "bold", "size": 10}
+    matplotlib.rc("font", **font)
+    fpr, tpr, _ = roc_curve(new_target, new_probs)
+    roc_auc = auc(fpr, tpr)
+    plt.title("ROC of Membership Inference Attack")
+    plt.plot(fpr, tpr, "b", label="AUC = %0.2f" % roc_auc)
+    plt.legend(loc="lower right")
+    plt.plot([0, 1], [0, 1], "r--")
+    plt.xlim([0, 1])
+    plt.ylim([0, 1])
+    plt.ylabel("True Positive Rate")
+    plt.xlabel("False Positive Rate")
+    plt.savefig(f"{name}_roc.png")
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -557,7 +642,6 @@ if __name__ == "__main__":
     ]
 
     prior = {LABEL_IN: runconfig["prior"]["IN"], LABEL_OUT: runconfig["prior"]["OUT"]}
-
     if args.attack_model == "RandomForest":
         AttacksList = [MIAttackClassifierRandomForest(metadata, prior, F) for F in FeatureList]
     elif args.attack_model == "LogReg":
@@ -596,3 +680,10 @@ if __name__ == "__main__":
     outfile = f"{dname}-MIA"
     with open(path.join(f"{args.outdir}", f"{outfile}.json"), "w") as f:
         json.dump(results, f)
+
+    if not os.path.exists(path.join(f"{args.outdir}/{dname}")):
+        os.mkdir(path.join(f"{args.outdir}/{dname}"))
+
+    for key in list(results.keys()):
+        plotRoc(results[key]["TestLabels"], results[key]["Predictions"], path.join(f"{args.outdir}/{dname}", f"{key}"))
+        plotMemberHisto(results[key]["TestLabels"], results[key]["Predictions"], path.join(f"{args.outdir}/{dname}", f"{key}"))
