@@ -1,4 +1,5 @@
 import argparse
+import copy
 import logging
 import random
 from pathlib import Path
@@ -41,6 +42,7 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
     classifiers = [target_model]
     classifier_optimizers = [optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)]
 
+    best_acc, best_state = 0, None
     with tqdm(range(epochs)) as pbar:
         for epoch in pbar:
             loss, train_acc = attack(
@@ -65,22 +67,56 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
                     classifiers=classifiers,
                     classifier_optimizers=classifier_optimizers,
                     num_batches=100,
-                    plot=save_path if epoch + 1 == epochs else None,
                 )
                 pbar.write(f"Test accuracy: {test_acc:.4f}")
 
-                torch.save(
-                    {
-                        "epoch": epoch + 1,
-                        "state_dict": attack_model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                    },
-                    f"{save_path}_{epoch+1}.pt",
-                )
+                if test_acc > best_acc:
+                    best_acc = test_acc
+                    best_state = copy.deepcopy(attack_model).cpu().eval().state_dict()
+
+                # torch.save(
+                #     {
+                #         "epoch": epoch + 1,
+                #         "state_dict": attack_model.state_dict(),
+                #         "optimizer": optimizer.state_dict(),
+                #     },
+                #     f"{save_path}_{epoch+1}.pt",
+                # )
+
+    attack_model.load_state_dict(best_state)
+    _, final_acc = attack(
+        attack_model=attack_model,
+        memloader=testloader_member,
+        nonmemloader=testloader_nonmember,
+        criterion=criterion,
+        optimizer=None,  # no attack optimizer => runs test without optimizing
+        classifier_criterion=classifier_criterion,
+        classifiers=classifiers,
+        classifier_optimizers=classifier_optimizers,
+        num_batches=250,
+        plot=save_path,
+    )
+    torch.save(
+        {
+            "epoch": epoch + 1,
+            "state_dict": attack_model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+        },
+        f"{save_path}_best_{final_acc}.pt",
+    )
 
 
 def mirage(
-    trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path
+    trainset_member,
+    testset_member,
+    trainset_nonmember,
+    traintar_member,
+    testtar_member,
+    traintar_nonmember,
+    target_model,
+    num_classes,
+    save_path,
+    feature="whitebox",
 ):
     attack_model = "RandomForest"  # ["RandomForest", "LogReg", "LinearSVC", "SVC", "KNN", "ANY"]
     nIter = 25
@@ -103,7 +139,7 @@ def mirage(
         for _ in range(nIter)
     ]
 
-    alldata = np.concatenate((trainset_member, testset_member, trainset_nonmember, testset_nonmember))
+    alldata = np.concatenate((trainset_member, testset_member, trainset_nonmember))
     metadata = {
         "categorical_columns": [],
         "ordinal_columns": [],
@@ -118,19 +154,28 @@ def mirage(
             for n in range(len(memberDF.columns))
         ],
     }
-    FeatureList = [
-        # NaiveFeatureSet(DataFrame),
-        # HistogramFeatureSet(DataFrame, metadata),
-        # CorrelationsFeatureSet(DataFrame, metadata),
-        # EnsembleFeatureSet(DataFrame, metadata),
-        WhiteBoxFeatureSet(
+
+    if feature == "naive":
+        feature = NaiveFeatureSet(DataFrame)
+    elif feature == "hist":
+        feature = HistogramFeatureSet(DataFrame, metadata)
+    elif feature == "corr":
+        feature = CorrelationsFeatureSet(DataFrame, metadata)
+    elif feature == "ensemble":
+        feature = EnsembleFeatureSet(DataFrame, metadata)
+    elif feature == "whitebox":
+        feature = WhiteBoxFeatureSet(
             metadata=metadata,
             models=[target_model],
             optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
             criterion=nn.CrossEntropyLoss(),
             num_classes=num_classes,
-        ),
-    ]
+        )
+        memberDF = pd.concat(
+            (memberDF, pd.DataFrame({"labels": np.concatenate((traintar_member, testtar_member))})), axis=1
+        )
+        targets = pd.concat((targets, pd.DataFrame({"labels": traintar_nonmember[targetIDs]})), axis=1)
+    FeatureList = [feature]
 
     prior = {LABEL_IN: prior["IN"], LABEL_OUT: prior["OUT"]}
 
@@ -170,8 +215,8 @@ def mirage(
     )
 
     for key in list(results.keys()):
-        plot_roc(results[key]["TestLabels"], results[key]["Predictions"], key)
-        plot_hist(results[key]["TestLabels"], results[key]["Predictions"], key)
+        plot_roc(results[key]["TestLabels"], results[key]["Predictions"], save_path.split("/")[-1] + "_" + key)
+        plot_hist(results[key]["TestLabels"], results[key]["Predictions"], save_path.split("/")[-1] + "_" + key)
 
 
 if __name__ == "__main__":
@@ -190,6 +235,7 @@ if __name__ == "__main__":
     parser.add_argument("attack", choices=["nasr", "mirage"])
     parser.add_argument("dataset", choices=["purchase", "texas", "cifar", "adult"], help="Dataset to use")
     parser.add_argument("model_checkpoint", help="Target model checkpoint")
+    parser.add_argument("--feature", help="Feature set to use for mirage attack", choices=["naive", "corr", "whitebox"])
     parser.add_argument(
         "--augmentation", action="store_true", help="Whether data augmentation in the target dataset is enabled"
     )
@@ -264,7 +310,18 @@ if __name__ == "__main__":
         trainarr_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0].numpy()
         testarr_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0].numpy()
         trainarr_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0].numpy()
-        testarr_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[0].numpy()
+        traintar_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[1].numpy()
+        testtar_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[1].numpy()
+        traintar_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[1].numpy()
         mirage(
-            trainarr_member, testarr_member, trainarr_nonmember, testarr_nonmember, target_model, num_classes, save_path
+            trainarr_member,
+            testarr_member,
+            trainarr_nonmember,
+            traintar_member,
+            testtar_member,
+            traintar_nonmember,
+            target_model,
+            num_classes,
+            save_path,
+            feature=args.feature,
         )

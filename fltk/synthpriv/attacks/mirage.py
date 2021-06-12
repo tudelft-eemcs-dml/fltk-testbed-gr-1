@@ -35,7 +35,7 @@ CATEGORICAL = "categorical"
 CONTINUOUS = "continuous"
 ORDINAL = "ordinal"
 
-PROCESSES = multiprocessing.cpu_count()
+PROCESSES = 12  # multiprocessing.cpu_count()
 
 
 def get_auc(trueLables, scores):

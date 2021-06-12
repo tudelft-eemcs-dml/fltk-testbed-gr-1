@@ -17,3 +17,8 @@ Nasr2 | 0.6108
 Epoch | Attack | Accuracy
 --- | --- | ---
 150 | Nasr2 | 0.8105
+
+
+purchase 50 0.5410
+texas 50 0.7795
+alex aug 0.5323

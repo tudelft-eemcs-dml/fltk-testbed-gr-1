@@ -123,7 +123,11 @@ def attack(
     data_iter = iter(zip(memloader, nonmemloader))
 
     for _ in range(num_batches):
-        (mem_input, mem_target), (nonmem_input, nonmem_target) = next(data_iter)
+        try:
+            (mem_input, mem_target), (nonmem_input, nonmem_target) = next(data_iter)
+        except StopIteration:
+            break
+
         mem_input, nonmem_input = mem_input.cuda(), nonmem_input.cuda()
         mem_target, nonmem_target = mem_target.cuda(), nonmem_target.cuda()
 

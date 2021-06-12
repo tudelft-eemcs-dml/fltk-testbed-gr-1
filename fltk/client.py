@@ -148,7 +148,10 @@ class Client:
         :param model_file_path: string
         """
         model_class = self.args.get_net()
-        model = model_class()
+        if model_class.__name__ == "DenseNet":
+            model = model_class(num_classes=100)
+        else:
+            model = model_class()
 
         if os.path.exists(model_file_path):
             try:

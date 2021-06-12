@@ -17,7 +17,7 @@ class SynthPrivConfig(BareConfig):
         self.available_nets["AdultMLP"] = AdultMLP
         self.available_nets["TexasMLP"] = TexasMLP
         self.available_nets["PurchaseMLP"] = PurchaseMLP
-        self.available_nets["DenseNet"] = partial(torchvision.models.densenet121, num_classes=100)
+        self.available_nets["DenseNet"] = torchvision.models.densenet121
         self.available_nets["AlexNet"] = AlexNet
         self.available_nets["PurchaseMLP"] = PurchaseMLP
         self.optimizer = torch.optim.Adam
