@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from fltk.synthpriv.plot import plot_nasr
+from fltk.synthpriv.plot import plot_nasr, save_classification_report, plot_nasr_multiple_roc
 
 
 class AverageMeter(object):
@@ -110,7 +110,7 @@ def attack(
     classifier_criterion,
     classifier_optimizers,
     num_batches=10,
-    plot=False,
+    plot=True,
 ):
     if plot:
         all_outputs, all_correct = [], []
@@ -121,6 +121,11 @@ def attack(
     classifiers = [model.eval().cuda() for model in classifiers]
 
     data_iter = iter(zip(memloader, nonmemloader))
+
+    done = False
+
+    y_true = []
+    y_pred =[]
 
     for _ in range(num_batches):
         try:
@@ -156,6 +161,10 @@ def attack(
             model_grads.append(torch.cat(grads).detach())
 
         attack_output = attack_model(model_grads, labels_1hot, correct_labels, classifiers_outputs)
+
+        y_true.extend(labels.tolist())
+        y_pred.extend(torch.argmax(classifiers_outputs[0], dim=1).tolist())
+
         is_member = torch.cat(
             (torch.ones(len(mem_input), device="cuda"), torch.zeros(len(nonmem_input), device="cuda"))
         )[:, None]
@@ -174,8 +183,10 @@ def attack(
 
         prec1 = torch.mean(((attack_output > 0.5) == is_member).float()).detach().item()
         top1.update(prec1, model_input.size(0))
-
-    if plot:
-        plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
+    roc_info = save_classification_report(y_true, y_pred, "test")
+    print(roc_info)
+    plot_nasr_multiple_roc(y_true, np.concatenate(all_correct), np.concatenate(all_outputs), roc_info, "test")
+    # if plot:
+        # plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
 
     return losses.avg, top1.avg
