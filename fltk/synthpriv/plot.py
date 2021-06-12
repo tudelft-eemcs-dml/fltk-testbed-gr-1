@@ -73,9 +73,8 @@ def plot_roc(target, probs, name):
 
 def plot_nasr(target, probs, name):
     font = {"weight": "bold", "size": 10}
-
-    mpreds = probs[target == 1] > 0.5
-    nmpreds = probs[target == 0] > 0.5
+    mpreds = probs[target == 1]
+    nmpreds = probs[target == 0]
 
     matplotlib.rc("font", **font)
 
