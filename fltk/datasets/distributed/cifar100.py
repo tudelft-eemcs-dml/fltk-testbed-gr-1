@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 
 class DistCIFAR100Dataset(DistDataset):
-    def __init__(self, args, augmentation=False):
+    def __init__(self, args, augmentation=True):
         super(DistCIFAR100Dataset, self).__init__(args)
         self.get_args().get_logger().debug("Loading CIFAR100 train data")
 

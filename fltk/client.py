@@ -202,7 +202,7 @@ class Client:
         self.net = self.net.train().to(self.device)
 
         # save model
-        if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0 and self.id == "client1":
+        if self.args.should_save_model(epoch) and (epoch + 1) % 50 == 0 and self.id == "client1":
             self.save_model(epoch, "main")
 
         running_loss = 0.0
@@ -234,7 +234,7 @@ class Client:
         self.scheduler.step()
 
         # save model
-        if self.args.should_save_model(epoch) and (epoch + 1) % 10 == 0:  # and self.id == "client1":
+        if self.args.should_save_model(epoch) and (epoch + 1) % 50 == 0:  # and self.id == "client1":
             self.save_model(epoch, self.args.get_epoch_save_end_suffix())
 
         return final_running_loss, self.get_nn_parameters()
