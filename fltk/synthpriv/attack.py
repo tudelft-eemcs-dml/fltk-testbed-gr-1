@@ -1,6 +1,7 @@
 import argparse
 import logging
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -33,7 +34,7 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
     last_layer_shape = list(target_model.parameters())[-2].shape  # -2 ==> final linear layer's weight
     attack_model = NasrAttackV2(num_classes=num_classes, gradient_shape=last_layer_shape).cuda()
 
-    epochs = 100
+    epochs = 200
     criterion = nn.MSELoss()
     optimizer = optim.Adam(attack_model.parameters(), lr=0.0001)
     classifier_criterion = nn.CrossEntropyLoss()
@@ -64,6 +65,7 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
                     classifiers=classifiers,
                     classifier_optimizers=classifier_optimizers,
                     num_batches=100,
+                    plot=save_path if epoch + 1 == epochs else None,
                 )
                 pbar.write(f"Test accuracy: {test_acc:.4f}")
 
@@ -117,17 +119,17 @@ def mirage(
         ],
     }
     FeatureList = [
-        NaiveFeatureSet(DataFrame),
+        # NaiveFeatureSet(DataFrame),
         # HistogramFeatureSet(DataFrame, metadata),
-        CorrelationsFeatureSet(DataFrame, metadata),
+        # CorrelationsFeatureSet(DataFrame, metadata),
         # EnsembleFeatureSet(DataFrame, metadata),
-        # WhiteBoxFeatureSet(
-        #     metadata=metadata,
-        #     models=[target_model],
-        #     optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
-        #     criterion=nn.CrossEntropyLoss(),
-        #     num_classes=num_classes,
-        # ),
+        WhiteBoxFeatureSet(
+            metadata=metadata,
+            models=[target_model],
+            optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
+            criterion=nn.CrossEntropyLoss(),
+            num_classes=num_classes,
+        ),
     ]
 
     prior = {LABEL_IN: prior["IN"], LABEL_OUT: prior["OUT"]}
@@ -167,8 +169,9 @@ def mirage(
         nShadows,
     )
 
-    with open(f"{save_path}.json", "w") as f:
-        json.dump(results, f)
+    for key in list(results.keys()):
+        plot_roc(results[key]["TestLabels"], results[key]["Predictions"], key)
+        plot_hist(results[key]["TestLabels"], results[key]["Predictions"], key)
 
 
 if __name__ == "__main__":
@@ -251,7 +254,7 @@ if __name__ == "__main__":
         trainset_nonmember.append(testset[r[i]])
         testset_nonmember.append(testset[r[i + testsize // 2]])
 
-    save_path = f"models/{args.attack}_attack_{args.dataset}_{target_model.__class__.__name__}"
+    save_path = f"models/{args.attack}_attack_{args.dataset}_{Path(args.model_checkpoint).stem}"
 
     if args.attack == "nasr":
         nasr(

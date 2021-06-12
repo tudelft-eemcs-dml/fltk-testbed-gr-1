@@ -1,7 +1,7 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.parallel
-from tqdm import tqdm
+from fltk.synthpriv.plot import plot_nasr
 
 
 class AverageMeter(object):
@@ -110,7 +110,11 @@ def attack(
     classifier_criterion,
     classifier_optimizers,
     num_batches=10,
+    plot=False,
 ):
+    if plot:
+        all_outputs, all_correct = [], []
+
     losses, top1 = AverageMeter(), AverageMeter()
 
     attack_model.train() if optimizer else attack_model.eval()
@@ -152,6 +156,10 @@ def attack(
             (torch.ones(len(mem_input), device="cuda"), torch.zeros(len(nonmem_input), device="cuda"))
         )[:, None]
 
+        if plot:
+            all_outputs.append(attack_output.squeeze().detach().cpu().numpy())
+            all_correct.append(is_member.squeeze().detach().cpu().numpy())
+
         if optimizer:
             loss = criterion(attack_output, is_member)
             losses.update(loss.detach().item(), model_input.size(0))
@@ -162,5 +170,8 @@ def attack(
 
         prec1 = torch.mean(((attack_output > 0.5) == is_member).float()).detach().item()
         top1.update(prec1, model_input.size(0))
+
+    if plot:
+        plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
 
     return losses.avg, top1.avg
