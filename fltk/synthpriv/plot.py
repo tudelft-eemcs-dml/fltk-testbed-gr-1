@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.metrics import auc, roc_curve, classification_report
 import json
-import statistics
 
 
 def plot_hist(target, prob_succes, name):
@@ -125,13 +124,12 @@ def plot_nasr(target, probs, name):
 
 def plot_nasr_multiple_roc(labels, target, probs, roc_info, name):
     print(labels)
-    print(int(roc_info[0][0]))
-    probs_min = probs[labels == int(roc_info[0][0])]
-    target_min = target[labels == int(roc_info[0][0])]
-    probs_median = probs[labels == int(roc_info[1][0])]
-    target_median = target[labels == int(roc_info[1][0])]
-    probs_max = probs[labels == int(roc_info[2][0])]
-    target_max = target[labels == int(roc_info[2][0])]
+    probs_min = [probs[i] for i, x in enumerate(labels) if x == int(roc_info[0][0])]
+    target_min = [target[i] for i, x in enumerate(labels) if x == int(roc_info[0][0])]
+    probs_median = [probs[i] for i, x in enumerate(labels) if x == int(roc_info[1][0])]
+    target_median = [target[i] for i, x in enumerate(labels) if x == int(roc_info[1][0])]
+    probs_max = [probs[i] for i, x in enumerate(labels) if x == int(roc_info[2][0])]
+    target_max = [target[i] for i, x in enumerate(labels) if x == int(roc_info[2][0])]
     print("CHECK1:")
     print(len(probs_min))
     print(len(target_median))
@@ -145,9 +143,9 @@ def plot_nasr_multiple_roc(labels, target, probs, roc_info, name):
     fpr_max, tpr_max, _ = roc_curve(target_max, probs_max)
     roc_auc_max = auc(fpr_max, tpr_max)
     plt.title("ROC of Membership Inference Attack")
-    plt.plot(fpr_min, tpr_min, "b", label="AUC = %0.2f" % roc_auc_min)
-    plt.plot(fpr_median, tpr_median, "b", label="AUC = %0.2f" % roc_auc_median)
-    plt.plot(fpr_max, tpr_max, "b", label="AUC = %0.2f" % roc_auc_max)
+    plt.plot(fpr_min, tpr_min, label="Min = %f, AUC = %0.2f" % (roc_info[0][1], roc_auc_min))
+    plt.plot(fpr_median, tpr_median, label="Median= %f, AUC = %0.2f" % (roc_info[1][1], roc_auc_median))
+    plt.plot(fpr_max, tpr_max, label="Max = %f, AUC = %0.2f" % (roc_info[2][1], roc_auc_max))
     plt.legend(loc="lower right")
     plt.plot([0, 1], [0, 1], "r--")
     plt.xlim([0, 1])
@@ -157,62 +155,67 @@ def plot_nasr_multiple_roc(labels, target, probs, roc_info, name):
     plt.savefig(f"results/endterm/{name}_multiple_roc.png")
     plt.close()
 
+
+def get_median(lst):
+    sortedLst = sorted(lst)
+    lstLen = len(lst)
+    index = (lstLen - 1) // 2
+
+    return sortedLst[index]
+
+
 def save_classification_report(y_true, y_pred, name):
     report = classification_report(y_true, y_pred, output_dict=True)
     with open(f"results/endterm/{name}_classification_report.json", 'w') as outfile:
-        json.dump(report, outfile)
+        json.dump(report, outfile, indent=2)
 
-    fscores = []
-    support = []
+    fscores = {}
+    support = {}
     keys = list(report.keys())
-    print("CHECK keys:")
-    print(keys)
     for key in keys:
         if key.isdigit() and report[key]["support"] > 0:
-            fscores.append(report[key]["f1-score"])
-            support.append(report[key]["support"])
+            fscores[key] = report[key]["f1-score"]
+            support[key] = report[key]["support"]
 
-    maximum = max(fscores)
-    minimum = min(fscores)
-    median = statistics.median(fscores)
-    max_indexes = []
-    min_indexes = []
-    median_indexes = []
-    for i in range(len(fscores)):
-        i = int(i)
+    fscores_list = list(fscores.values())
+    maximum = max(fscores_list)
+    minimum = min(fscores_list)
+    median = get_median(fscores_list)
+    max_keys = []
+    min_keys = []
+    median_keys = []
+    for i in list(fscores.keys()):
         if fscores[i] == maximum:
-            max_indexes.append(i)
+            max_keys.append(i)
         if fscores[i] == minimum:
-            min_indexes.append(i)
+            min_keys.append(i)
         if fscores[i] == median:
-            median_indexes.append(i)
-
-    max_index = max_indexes[0]
-    min_index = min_indexes[0]
-    median_index = min_indexes[0]
+            median_keys.append(i)
+    max_key = max_keys[0]
+    min_key = min_keys[0]
+    median_key = median_keys[0]
 
     support_count = 0
-    for i in max_indexes:
+    for i in max_keys:
         if support[i] > support_count:
             support_count = support[i]
-            max_index = i
+            max_key = i
     support_count = 0
-    for i in min_indexes:
+    for i in min_keys:
         if support[i] > support_count:
             support_count = support[i]
-            min_index = i
+            min_key = i
     support_count = 0
-    for i in median_indexes:
+    for i in median_keys:
         if support[i] > support_count:
             support_count = support[i]
-            median_index = i
+            median_key = i
 
-    return [[keys[min_index], report[keys[min_index]]["f1-score"]], [keys[median_index], report[keys[median_index]]["f1-score"]], [keys[max_index], report[keys[max_index]]["f1-score"]]]
+    return [[min_key, report[min_key]["f1-score"]], [median_key, report[median_key]["f1-score"]], [max_key, report[max_key]["f1-score"]]]
 
 
 
 if __name__ == "__main__":
-
     file = "./output/mirage/texas-MIA.json"
     f = open(file, "r")
     results = json.load(f)

@@ -110,10 +110,12 @@ def attack(
     classifier_criterion,
     classifier_optimizers,
     num_batches=10,
-    plot=True,
+    plot=False,
 ):
     if plot:
         all_outputs, all_correct = [], []
+        y_true = []
+        y_pred = []
 
     losses, top1 = AverageMeter(), AverageMeter()
 
@@ -124,8 +126,7 @@ def attack(
 
     done = False
 
-    y_true = []
-    y_pred =[]
+
 
     for _ in range(num_batches):
         try:
@@ -162,9 +163,6 @@ def attack(
 
         attack_output = attack_model(model_grads, labels_1hot, correct_labels, classifiers_outputs)
 
-        y_true.extend(labels.tolist())
-        y_pred.extend(torch.argmax(classifiers_outputs[0], dim=1).tolist())
-
         is_member = torch.cat(
             (torch.ones(len(mem_input), device="cuda"), torch.zeros(len(nonmem_input), device="cuda"))
         )[:, None]
@@ -172,6 +170,8 @@ def attack(
         if plot:
             all_outputs.append(attack_output.squeeze().detach().cpu().numpy())
             all_correct.append(is_member.squeeze().detach().cpu().numpy())
+            y_true.extend(labels.tolist())
+            y_pred.extend(torch.argmax(classifiers_outputs[0], dim=1).tolist())
 
         if optimizer:
             loss = criterion(attack_output, is_member)
@@ -183,10 +183,9 @@ def attack(
 
         prec1 = torch.mean(((attack_output > 0.5) == is_member).float()).detach().item()
         top1.update(prec1, model_input.size(0))
-    roc_info = save_classification_report(y_true, y_pred, "test")
-    print(roc_info)
-    plot_nasr_multiple_roc(y_true, np.concatenate(all_correct), np.concatenate(all_outputs), roc_info, "test")
-    # if plot:
-        # plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
+    if plot:
+        roc_info = save_classification_report(y_true, y_pred, plot.split("/")[-1])
+        plot_nasr_multiple_roc(y_true, np.concatenate(all_correct), np.concatenate(all_outputs), roc_info, plot.split("/")[-1])
+        plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
 
     return losses.avg, top1.avg
