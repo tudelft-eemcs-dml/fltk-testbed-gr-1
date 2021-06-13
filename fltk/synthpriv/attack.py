@@ -131,7 +131,7 @@ def mirage(
     save_path,
     features="ensemble",
 ):
-    attack_model = "LGBM"  # or "Boosting" "RandomForest", "LogReg", "LinearSVC", "SVC", "KNN", "MLP"
+    attack_model = "RandomForest"  # or "LGBM" "Boosting" "RandomForest", "LogReg", "LinearSVC", "SVC", "KNN", "MLP"
     nIter = 25
     nTargets = 50
     sizeRawA = 500
@@ -238,7 +238,7 @@ def mirage(
         testRawIndices,
         sizeRawTest,
         nShadows,
-        nproc=8 if not "whitebox" in features else 4,
+        nproc=20 if not "whitebox" in features else 4,
     )
 
     if not "whitebox" in features:
@@ -340,9 +340,21 @@ if __name__ == "__main__":
             trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path
         )
     elif args.attack == "mirage":
-        trainarr_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0].numpy()
-        testarr_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0].numpy()
-        trainarr_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0].numpy()
+        trainarr_member = (
+            next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0]
+            .numpy()
+            .reshape(len(trainset_member), -1)
+        )
+        testarr_member = (
+            next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0]
+            .numpy()
+            .reshape(len(testset_member), -1)
+        )
+        trainarr_nonmember = (
+            next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0]
+            .numpy()
+            .reshape(len(trainset_nonmember), -1)
+        )
         traintar_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[1].numpy()
         testtar_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[1].numpy()
         traintar_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[1].numpy()
@@ -443,6 +455,7 @@ if __name__ == "__main__":
             early_stopping_rounds=50,
         )
         print("Took:", time() - t, "sec")
+        joblib.dump(attack_model, save_path + ".pkl")
 
         preds = attack_model.predict_proba(test)[:, 1]
         plot_nasr(test_member_labels, preds, save_path.split("/")[-1])

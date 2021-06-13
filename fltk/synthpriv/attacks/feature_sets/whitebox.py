@@ -51,6 +51,7 @@ class WhiteBoxFeatureSet(FeatureSet):
             batch = torch.from_numpy(batch).cuda()
             lbls = torch.from_numpy(np.nan_to_num(lbls)).long().cuda()
 
+            print(self.models[0].__class__.__name__)
             outputs = [
                 model(
                     batch
