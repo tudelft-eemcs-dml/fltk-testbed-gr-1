@@ -1,4 +1,5 @@
 from os import path
+import numpy
 from pandas import DataFrame
 from numpy import ndarray, array, linspace, all, histogram, bincount
 from pandas.api.types import CategoricalDtype

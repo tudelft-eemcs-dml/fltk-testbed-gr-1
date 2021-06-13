@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from fltk.synthpriv.plot import plot_nasr
+from sklearn.metrics import classification_report
 
 
 class AverageMeter(object):
@@ -177,5 +178,6 @@ def attack(
 
     if plot:
         plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
+        print(classification_report(np.concatenate(all_correct), np.concatenate(all_outputs) > 0.5))
 
     return losses.avg, top1.avg

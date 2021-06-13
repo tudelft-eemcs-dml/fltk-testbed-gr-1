@@ -13,14 +13,9 @@ from numpy import arange, array, concatenate, mean, ndarray, round, stack
 from numpy.random import choice
 from pandas import DataFrame
 from pandas.api.types import CategoricalDtype, is_numeric_dtype
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import auc, roc_curve
 from sklearn.model_selection import ShuffleSplit
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.neural_network import MLPClassifier
-from sklearn.svm import SVC
 from tqdm import tqdm
 
 from .feature_sets.bayes import CorrelationsFeatureSet
@@ -34,8 +29,6 @@ FILLNA_VALUE_CAT = "NaN"
 CATEGORICAL = "categorical"
 CONTINUOUS = "continuous"
 ORDINAL = "ordinal"
-
-PROCESSES = 12  # multiprocessing.cpu_count()
 
 
 def get_auc(trueLables, scores):
@@ -189,48 +182,6 @@ class MIAttackClassifier:
             df[num_cols] = self.ImputerNum.transform(df[num_cols])
 
         return df
-
-
-class MIAttackClassifierLinearSVC(MIAttackClassifier):
-    """ Membership inference attack based on shadow modelling using a linear SVClassifier """
-
-    def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(SVC(kernel="linear", probability=True), metadata, priorProbabilities, FeatureSet)
-
-
-class MIAttackClassifierSVC(MIAttackClassifier):
-    """ Membership inference attack based on shadow modelling using a non-linear SVClassifier"""
-
-    def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(SVC(probability=True), metadata, priorProbabilities, FeatureSet)
-
-
-class MIAttackClassifierLogReg(MIAttackClassifier):
-    """ Membership inference attack based on shadow modelling using a LogisticRegression Classifier"""
-
-    def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(LogisticRegression(max_iter=300), metadata, priorProbabilities, FeatureSet)
-
-
-class MIAttackClassifierRandomForest(MIAttackClassifier):
-    """ Membership inference attack based on shadow modelling using a RandomForestClassifier"""
-
-    def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(RandomForestClassifier(), metadata, priorProbabilities, FeatureSet)
-
-
-class MIAttackClassifierKNN(MIAttackClassifier):
-    """ Membership inference attack based on shadow modelling using a KNeighborsClassifier """
-
-    def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(KNeighborsClassifier(n_neighbors=5), metadata, priorProbabilities, FeatureSet)
-
-
-class MIAttackClassifierMLP(MIAttackClassifier):
-    """ Membership inference attack based on shadow modelling using a multi-layer perceptron as classifier"""
-
-    def __init__(self, metadata, priorProbabilities, FeatureSet=None):
-        super().__init__(MLPClassifier((200,), solver="lbfgs"), metadata, priorProbabilities, FeatureSet)
 
 
 def load_local_data_as_df(filename):
@@ -452,9 +403,10 @@ def evaluate_mia(
     testRawIndices,
     sizeRawTest,
     nShadows,
+    nproc=multiprocessing.cpu_count(),
 ):
     # Train and test MIA per target
-    with Pool(processes=PROCESSES) as pool:
+    with Pool(processes=nproc) as pool:
         tasks = [
             (
                 attacksList,
@@ -469,8 +421,11 @@ def evaluate_mia(
             for tid in targetIDs
         ]
         resultsList = []
-        for res in tqdm(pool.imap_unordered(worker_run_mia, tasks), total=len(tasks), smoothing=0):
+        pbar = tqdm(total=len(tasks), smoothing=0)
+        for res in pool.imap_unordered(worker_run_mia, tasks):
             resultsList.append(res)
+            pbar.write("Accuracies: " + " ".join([f"{k}: {v['Accuracy']}" for k, v in res.items()]))
+            pbar.update(1)
 
     results = {
         AM.__name__: {

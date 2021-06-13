@@ -2,8 +2,11 @@ import argparse
 import copy
 import logging
 import random
+import yaml
 from pathlib import Path
+from time import time
 
+import joblib
 import numpy as np
 import torch
 import torch.multiprocessing as mp
@@ -12,7 +15,8 @@ import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data as data
 import torchvision as tv
-import yaml
+from torch.utils.data import DataLoader
+
 from fltk.datasets.distributed.cifar100 import DistCIFAR100Dataset
 from fltk.nets.cifar_100_resnet import Cifar100ResNet
 from fltk.synthpriv.attacks.feature_sets.whitebox import WhiteBoxFeatureSet
@@ -21,8 +25,23 @@ from fltk.synthpriv.attacks.nasr2 import NasrAttackV2, attack
 from fltk.synthpriv.config import SynthPrivConfig
 from fltk.synthpriv.datasets import *
 from fltk.synthpriv.models import *
-from torch.utils.data import DataLoader
+from fltk.synthpriv.plot import plot_nasr
+
 from tqdm import tqdm
+
+# must enable hist grad
+from sklearn.experimental import enable_hist_gradient_boosting
+
+# before actually importing
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report
+from sklearn.decomposition import KernelPCA
+
+import lightgbm as lgb
 
 
 def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path):
@@ -42,6 +61,7 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
     classifiers = [target_model]
     classifier_optimizers = [optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)]
 
+    print("Training attack classifier...")
     best_acc, best_state = 0, None
     with tqdm(range(epochs)) as pbar:
         for epoch in pbar:
@@ -73,15 +93,7 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
                 if test_acc > best_acc:
                     best_acc = test_acc
                     best_state = copy.deepcopy(attack_model).cpu().eval().state_dict()
-
-                # torch.save(
-                #     {
-                #         "epoch": epoch + 1,
-                #         "state_dict": attack_model.state_dict(),
-                #         "optimizer": optimizer.state_dict(),
-                #     },
-                #     f"{save_path}_{epoch+1}.pt",
-                # )
+    print("Took:", time() - t, "sec")
 
     attack_model.load_state_dict(best_state)
     _, final_acc = attack(
@@ -116,9 +128,9 @@ def mirage(
     target_model,
     num_classes,
     save_path,
-    feature="whitebox",
+    features="ensemble",
 ):
-    attack_model = "RandomForest"  # ["RandomForest", "LogReg", "LinearSVC", "SVC", "KNN", "ANY"]
+    attack_model = "LGBM"  # or "Boosting" "RandomForest", "LogReg", "LinearSVC", "SVC", "KNN", "MLP"
     nIter = 25
     nTargets = 50
     sizeRawA = 500
@@ -140,35 +152,32 @@ def mirage(
     ]
 
     alldata = np.concatenate((trainset_member, testset_member, trainset_nonmember))
-    metadata = {
-        "categorical_columns": [],
-        "ordinal_columns": [],
-        "continuous_columns": list(range(len(memberDF.columns))),
-        "columns": [
-            {
-                "name": n,
-                "type": "continuous",
-                "min": alldata[:, n].min(),
-                "max": alldata[:, n].max(),
-            }
-            for n in range(len(memberDF.columns))
-        ],
-    }
+    metadata = {"categorical_columns": [], "ordinal_columns": [], "continuous_columns": [], "columns": []}
+    for n in range(alldata.shape[1]):
+        unique_vals = np.unique(alldata[:, n])
+        if len(unique_vals) <= 100:
+            metadata["categorical_columns"].append(n)
+            metadata["columns"].append({"name": n, "type": "categorical", "size": len(unique_vals), "i2s": unique_vals})
+        else:
+            metadata["continuous_columns"].append(n)
+            metadata["columns"].append(
+                {"name": n, "type": "continuous", "min": alldata[:, n].min(), "max": alldata[:, n].max()}
+            )
 
-    if feature == "naive":
+    if features == "naive":
         feature = NaiveFeatureSet(DataFrame)
-    elif feature == "hist":
+    elif features == "hist":
         feature = HistogramFeatureSet(DataFrame, metadata)
-    elif feature == "corr":
+    elif features == "corr":
         feature = CorrelationsFeatureSet(DataFrame, metadata)
-    elif feature == "ensemble":
+    elif features == "ensemble":
         feature = EnsembleFeatureSet(DataFrame, metadata)
-    elif feature == "whitebox":
+    elif "whitebox" in features:
         feature = WhiteBoxFeatureSet(
-            metadata=metadata,
             models=[target_model],
             optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
             criterion=nn.CrossEntropyLoss(),
+            type=features.split("-")[-1],
             num_classes=num_classes,
         )
         memberDF = pd.concat(
@@ -179,30 +188,46 @@ def mirage(
 
     prior = {LABEL_IN: prior["IN"], LABEL_OUT: prior["OUT"]}
 
-    if attack_model == "RandomForest":
-        AttacksList = [MIAttackClassifierRandomForest(metadata, prior, F) for F in FeatureList]
-    elif attack_model == "LogReg":
-        AttacksList = [MIAttackClassifierLogReg(metadata, prior, F) for F in FeatureList]
-    elif attack_model == "LinearSVC":
-        AttacksList = [MIAttackClassifierLinearSVC(metadata, prior, F) for F in FeatureList]
-    elif attack_model == "SVC":
-        AttacksList = [MIAttackClassifierSVC(metadata, prior, F) for F in FeatureList]
-    elif attack_model == "KNN":
-        AttacksList = [MIAttackClassifierKNN(metadata, prior, F) for F in FeatureList]
-    elif attack_model == "ANY":
-        AttacksList = []
-        for F in FeatureList:
-            AttacksList.extend(
-                [
-                    MIAttackClassifierRandomForest(metadata, prior, F),
-                    MIAttackClassifierLogReg(metadata, prior, F),
-                    MIAttackClassifierKNN(metadata, prior, F),
-                ]
+    AttacksList = []
+    if "RandomForest" in attack_model:
+        AttacksList += [MIAttackClassifier(RandomForestClassifier(), metadata, prior, F) for F in FeatureList]
+    if "LogReg" in attack_model:
+        AttacksList += [MIAttackClassifier(LogisticRegression(max_iter=300), metadata, prior, F) for F in FeatureList]
+    if "LinearSVC" in attack_model:
+        AttacksList += [
+            MIAttackClassifier(SVC(kernel="linear", probability=True), metadata, prior, F) for F in FeatureList
+        ]
+    if "SVC" in attack_model:
+        AttacksList += [MIAttackClassifier(SVC(probability=True), metadata, prior, F) for F in FeatureList]
+    if "KNN" in attack_model:
+        AttacksList += [
+            MIAttackClassifier(KNeighborsClassifier(n_neighbors=5), metadata, prior, F) for F in FeatureList
+        ]
+    if "MLP" in attack_model:
+        AttacksList += [
+            MIAttackClassifier(MLPClassifier((200,), solver="lbfgs"), metadata, prior, F) for F in FeatureList
+        ]
+    if "Boosting" in attack_model:
+        AttacksList += [MIAttackClassifier(HistGradientBoostingClassifier(), metadata, prior, F) for F in FeatureList]
+    if "LGBM" in attack_model:
+        AttacksList += [
+            MIAttackClassifier(
+                lgb.LGBMClassifier(
+                    objective="binary",
+                    max_bin=31,
+                    device="cpu",
+                    is_unbalance=True,
+                    num_iterations=250,
+                ),
+                metadata,
+                prior,
+                F,
             )
-    else:
+            for F in FeatureList
+        ]
+    if len(AttacksList) == 0:
         raise ValueError(f"Unknown AM {attack_model}")
 
-    # Run privacy evaluation under MIA adversary
     results = evaluate_mia(
         AttacksList,
         memberDF,
@@ -212,6 +237,7 @@ def mirage(
         testRawIndices,
         sizeRawTest,
         nShadows,
+        nproc=8 if not "whitebox" in features else 4,
     )
 
     for key in list(results.keys()):
@@ -232,10 +258,14 @@ if __name__ == "__main__":
     torch.backends.cudnn.benchmark = True
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("attack", choices=["nasr", "mirage"])
+    parser.add_argument("attack", choices=["nasr", "mirage", "lgbm"])
     parser.add_argument("dataset", choices=["purchase", "texas", "cifar", "adult"], help="Dataset to use")
     parser.add_argument("model_checkpoint", help="Target model checkpoint")
-    parser.add_argument("--feature", help="Feature set to use for mirage attack", choices=["naive", "corr", "whitebox"])
+    parser.add_argument(
+        "--feature",
+        help="Feature set to use for mirage attack",
+        choices=["naive", "corr", "hist", "ensemble", "whitebox-naive", "whitebox-hist"],
+    )
     parser.add_argument(
         "--augmentation", action="store_true", help="Whether data augmentation in the target dataset is enabled"
     )
@@ -286,8 +316,8 @@ if __name__ == "__main__":
 
     trainset = dataset.train_dataset
     testset = dataset.test_dataset
-    trainsize = min(len(trainset), 50000)
-    testsize = min(len(testset), 5000)
+    trainsize = min(len(trainset), 25000)
+    testsize = min(len(testset), 10000)
     print(f"Train set size: {trainsize}, Test set size: {testsize}")
 
     trainset_member, testset_member, trainset_nonmember, testset_nonmember = [], [], [], []
@@ -306,7 +336,7 @@ if __name__ == "__main__":
         nasr(
             trainset_member, testset_member, trainset_nonmember, testset_nonmember, target_model, num_classes, save_path
         )
-    else:
+    elif args.attack == "mirage":
         trainarr_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0].numpy()
         testarr_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0].numpy()
         trainarr_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0].numpy()
@@ -323,5 +353,97 @@ if __name__ == "__main__":
             target_model,
             num_classes,
             save_path,
-            feature=args.feature,
+            args.feature,
         )
+    else:
+        if not os.path.exists("cache"):
+            print("Preparing data...")
+            t = time()
+            train_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0].numpy()
+            test_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0].numpy()
+            train_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0].numpy()
+            test_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[0].numpy()
+            train_lbls_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[1].numpy()
+            test_lbls_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[1].numpy()
+            train_lbls_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[
+                1
+            ].numpy()
+            test_lbls_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[
+                1
+            ].numpy()
+
+            metadata = {
+                "categorical_columns": [],
+                "ordinal_columns": [],
+                "continuous_columns": list(range(train_member.shape[1])),
+                "columns": [
+                    {
+                        "name": n,
+                        "type": "continuous",
+                        "min": train_member[:, n].min(),
+                        "max": train_member[:, n].max(),
+                    }
+                    for n in range(train_member.shape[1])
+                ],
+            }
+            whitebox_processor = WhiteBoxFeatureSet(
+                metadata=metadata,
+                models=[target_model],
+                optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
+                criterion=nn.CrossEntropyLoss(),
+                num_classes=num_classes,
+            )
+
+            train = pd.DataFrame(np.concatenate((train_member, train_nonmember)))
+            train_labels = pd.DataFrame({"labels": np.concatenate((train_lbls_member, train_lbls_nonmember))})
+            test = pd.DataFrame(np.concatenate((test_member, test_nonmember)))
+            test_labels = pd.DataFrame({"labels": np.concatenate((test_lbls_member, test_lbls_nonmember))})
+            print("Took:", time() - t, "sec")
+
+            print("Mining target model gradients...")
+            t = time()
+            whitebox_train = whitebox_processor.whitebox(pd.concat((train, train_labels), axis=1))
+            whitebox_test = whitebox_processor.whitebox(pd.concat((test, test_labels), axis=1))
+            print("Took:", time() - t, "sec")
+
+            train = np.concatenate((train, whitebox_train), axis=1).astype(np.float32)
+            test = np.concatenate((test, whitebox_test), axis=1).astype(np.float32)
+
+            train_member_labels = np.concatenate((np.ones(len(train_member)), np.zeros((len(train_nonmember))))).astype(
+                bool
+            )
+            test_member_labels = np.concatenate((np.ones(len(test_member)), np.zeros((len(test_nonmember))))).astype(
+                bool
+            )
+
+            joblib.dump((train, train_member_labels, test, test_member_labels), "cache")
+        else:
+            train, train_member_labels, test, test_member_labels = joblib.load("cache")
+
+        idxs = np.random.permutation(len(train))
+        train, train_member_labels = train[idxs], train_member_labels[idxs]
+        idxs = np.random.permutation(len(test))
+        test, test_member_labels = test[idxs], test_member_labels[idxs]
+
+        print(train.shape, train_member_labels.shape)
+        print(test.shape, test_member_labels.shape)
+
+        print("Training attack classifier...")
+        t = time()
+        attack_model = lgb.LGBMClassifier(
+            objective="binary",
+            max_bin=31,
+            device="gpu",
+            gpu_use_dp=False,
+            is_unbalance=True,
+            num_iterations=1000,
+            eval_set=[(test, test_member_labels)],
+            eval_metric=["auc", "l1", "binary_logloss"],
+            early_stopping_rounds=25,
+        )
+        attack_model.fit(train, train_member_labels)
+        print("Took:", time() - t, "sec")
+
+        preds = attack_model.predict_proba(test)[:, 1]
+        plot_nasr(test_member_labels, preds, save_path.split("/")[-1])
+        print(classification_report(test_member_labels, preds > 0.5))
