@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from fltk.synthpriv.plot import plot_nasr
+from fltk.synthpriv.plot import plot_nasr, plot_nasr_multiple_roc, save_classification_report
 from sklearn.metrics import classification_report
 
 
@@ -115,6 +115,8 @@ def attack(
 ):
     if plot:
         all_outputs, all_correct = [], []
+        y_true = []
+        y_pred = []
 
     losses, top1 = AverageMeter(), AverageMeter()
 
@@ -122,6 +124,8 @@ def attack(
     classifiers = [model.eval().cuda() for model in classifiers]
 
     data_iter = iter(zip(memloader, nonmemloader))
+
+    done = False
 
     for _ in range(num_batches):
         try:
@@ -157,6 +161,7 @@ def attack(
             model_grads.append(torch.cat(grads).detach())
 
         attack_output = attack_model(model_grads, labels_1hot, correct_labels, classifiers_outputs)
+
         is_member = torch.cat(
             (torch.ones(len(mem_input), device="cuda"), torch.zeros(len(nonmem_input), device="cuda"))
         )[:, None]
@@ -164,6 +169,8 @@ def attack(
         if plot:
             all_outputs.append(attack_output.squeeze().detach().cpu().numpy())
             all_correct.append(is_member.squeeze().detach().cpu().numpy())
+            y_true.extend(labels.tolist())
+            y_pred.extend(torch.argmax(classifiers_outputs[0], dim=1).tolist())
 
         if optimizer:
             loss = criterion(attack_output, is_member)
@@ -175,8 +182,11 @@ def attack(
 
         prec1 = torch.mean(((attack_output > 0.5) == is_member).float()).detach().item()
         top1.update(prec1, model_input.size(0))
-
     if plot:
+        roc_info = save_classification_report(y_true, y_pred, plot.split("/")[-1])
+        plot_nasr_multiple_roc(
+            y_true, np.concatenate(all_correct), np.concatenate(all_outputs), roc_info, plot.split("/")[-1]
+        )
         plot_nasr(np.concatenate(all_correct), np.concatenate(all_outputs), plot.split("/")[-1])
         print(classification_report(np.concatenate(all_correct), np.concatenate(all_outputs) > 0.5))
 
