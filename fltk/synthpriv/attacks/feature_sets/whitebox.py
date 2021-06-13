@@ -51,7 +51,14 @@ class WhiteBoxFeatureSet(FeatureSet):
             batch = torch.from_numpy(batch).cuda()
             lbls = torch.from_numpy(np.nan_to_num(lbls)).long().cuda()
 
-            outputs = [model(batch) for model in self.models]
+            outputs = [
+                model(
+                    batch
+                    if not model.__class__.__name__ in ["DenseNet", "AlexNet", "Cifar100ResNet"]
+                    else batch.reshape(len(batch), 3, 32, 32)
+                )
+                for model in self.models
+            ]
 
             labels_1hot = torch.nn.functional.one_hot(lbls, num_classes=self.num_classes).float()
 

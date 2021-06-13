@@ -62,6 +62,7 @@ def nasr(trainset_member, testset_member, trainset_nonmember, testset_nonmember,
     classifier_optimizers = [optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)]
 
     print("Training attack classifier...")
+    t = time()
     best_acc, best_state = 0, None
     with tqdm(range(epochs)) as pbar:
         for epoch in pbar:
@@ -240,6 +241,8 @@ def mirage(
         nproc=8 if not "whitebox" in features else 4,
     )
 
+    if not "whitebox" in features:
+        save_path = "_".join(save_path.split("_")[:-1])  # remove model from save_path, non-whitebox is model-agnostic
     for key in list(results.keys()):
         plot_roc(results[key]["TestLabels"], results[key]["Predictions"], save_path.split("/")[-1] + "_" + key)
         plot_hist(results[key]["TestLabels"], results[key]["Predictions"], save_path.split("/")[-1] + "_" + key)
@@ -316,8 +319,8 @@ if __name__ == "__main__":
 
     trainset = dataset.train_dataset
     testset = dataset.test_dataset
-    trainsize = min(len(trainset), 25000)
-    testsize = min(len(testset), 10000)
+    trainsize = min(len(trainset), 25000 if not args.dataset == "cifar" else 15000)
+    testsize = min(len(testset), 10000 if not args.dataset == "cifar" else 6000)
     print(f"Train set size: {trainsize}, Test set size: {testsize}")
 
     trainset_member, testset_member, trainset_nonmember, testset_nonmember = [], [], [], []
@@ -356,92 +359,89 @@ if __name__ == "__main__":
             args.feature,
         )
     else:
-        if not os.path.exists("cache"):
-            print("Preparing data...")
-            t = time()
-            train_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0].numpy()
-            test_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0].numpy()
-            train_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0].numpy()
-            test_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[0].numpy()
-            train_lbls_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[1].numpy()
-            test_lbls_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[1].numpy()
-            train_lbls_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[
-                1
-            ].numpy()
-            test_lbls_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[
-                1
-            ].numpy()
+        # cache_file = f"data/whitebox_{args.dataset}_train{trainsize}_test{testsize}_cache.pkl"
+        # if not os.path.exists(cache_file):
+        print("Preparing data...")
+        t = time()
+        train_member = (
+            next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[0]
+            .numpy()
+            .reshape(len(trainset_member), -1)
+        )
+        test_member = (
+            next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[0]
+            .numpy()
+            .reshape(len(testset_member), -1)
+        )
+        train_nonmember = (
+            next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[0]
+            .numpy()
+            .reshape(len(trainset_nonmember), -1)
+        )
+        test_nonmember = (
+            next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[0]
+            .numpy()
+            .reshape(len(testset_nonmember), -1)
+        )
+        train_lbls_member = next(iter(DataLoader(trainset_member, batch_size=len(trainset_member))))[1].numpy()
+        test_lbls_member = next(iter(DataLoader(testset_member, batch_size=len(testset_member))))[1].numpy()
+        train_lbls_nonmember = next(iter(DataLoader(trainset_nonmember, batch_size=len(trainset_nonmember))))[1].numpy()
+        test_lbls_nonmember = next(iter(DataLoader(testset_nonmember, batch_size=len(testset_nonmember))))[1].numpy()
 
-            metadata = {
-                "categorical_columns": [],
-                "ordinal_columns": [],
-                "continuous_columns": list(range(train_member.shape[1])),
-                "columns": [
-                    {
-                        "name": n,
-                        "type": "continuous",
-                        "min": train_member[:, n].min(),
-                        "max": train_member[:, n].max(),
-                    }
-                    for n in range(train_member.shape[1])
-                ],
-            }
-            whitebox_processor = WhiteBoxFeatureSet(
-                metadata=metadata,
-                models=[target_model],
-                optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
-                criterion=nn.CrossEntropyLoss(),
-                num_classes=num_classes,
-            )
+        whitebox_processor = WhiteBoxFeatureSet(
+            models=[target_model],
+            optimizers=[optim.Adam(target_model.parameters(), lr=0.001, weight_decay=0.0005)],
+            criterion=nn.CrossEntropyLoss(),
+            num_classes=num_classes,
+        )
 
-            train = pd.DataFrame(np.concatenate((train_member, train_nonmember)))
-            train_labels = pd.DataFrame({"labels": np.concatenate((train_lbls_member, train_lbls_nonmember))})
-            test = pd.DataFrame(np.concatenate((test_member, test_nonmember)))
-            test_labels = pd.DataFrame({"labels": np.concatenate((test_lbls_member, test_lbls_nonmember))})
-            print("Took:", time() - t, "sec")
+        train = pd.DataFrame(np.concatenate((train_member, train_nonmember)))
+        train_labels = pd.DataFrame({"labels": np.concatenate((train_lbls_member, train_lbls_nonmember))})
+        test = pd.DataFrame(np.concatenate((test_member, test_nonmember)))
+        test_labels = pd.DataFrame({"labels": np.concatenate((test_lbls_member, test_lbls_nonmember))})
+        print("Took:", time() - t, "sec")
 
-            print("Mining target model gradients...")
-            t = time()
-            whitebox_train = whitebox_processor.whitebox(pd.concat((train, train_labels), axis=1))
-            whitebox_test = whitebox_processor.whitebox(pd.concat((test, test_labels), axis=1))
-            print("Took:", time() - t, "sec")
+        print("Mining target model gradients...")
+        t = time()
+        whitebox_train = whitebox_processor.whitebox(pd.concat((train, train_labels), axis=1))
+        whitebox_test = whitebox_processor.whitebox(pd.concat((test, test_labels), axis=1))
+        print("Took:", time() - t, "sec")
 
-            train = np.concatenate((train, whitebox_train), axis=1).astype(np.float32)
-            test = np.concatenate((test, whitebox_test), axis=1).astype(np.float32)
+        train = np.concatenate((train, whitebox_train), axis=1).astype(np.float32)
+        test = np.concatenate((test, whitebox_test), axis=1).astype(np.float32)
 
-            train_member_labels = np.concatenate((np.ones(len(train_member)), np.zeros((len(train_nonmember))))).astype(
-                bool
-            )
-            test_member_labels = np.concatenate((np.ones(len(test_member)), np.zeros((len(test_nonmember))))).astype(
-                bool
-            )
+        train_member_labels = np.concatenate((np.ones(len(train_member)), np.zeros((len(train_nonmember))))).astype(
+            bool
+        )
+        test_member_labels = np.concatenate((np.ones(len(test_member)), np.zeros((len(test_nonmember))))).astype(bool)
 
-            joblib.dump((train, train_member_labels, test, test_member_labels), "cache")
-        else:
-            train, train_member_labels, test, test_member_labels = joblib.load("cache")
+        #     joblib.dump((train, train_member_labels, test, test_member_labels), cache_file)
+        # else:
+        #     train, train_member_labels, test, test_member_labels = joblib.load(cache_file)
 
         idxs = np.random.permutation(len(train))
         train, train_member_labels = train[idxs], train_member_labels[idxs]
         idxs = np.random.permutation(len(test))
         test, test_member_labels = test[idxs], test_member_labels[idxs]
 
-        print(train.shape, train_member_labels.shape)
-        print(test.shape, test_member_labels.shape)
-
         print("Training attack classifier...")
         t = time()
         attack_model = lgb.LGBMClassifier(
             objective="binary",
-            max_bin=31,
+            metric=["auc"],
+            max_bin=63,
             device="gpu",
             gpu_use_dp=False,
             is_unbalance=True,
             num_iterations=1000,
-            eval_set=[(test, test_member_labels)],
-            eval_metric=["auc", "l1", "binary_logloss"],
-            early_stopping_rounds=25,
+            learning_rate=0.05,
         )
-        attack_model.fit(train, train_member_labels)
+        attack_model.fit(
+            train,
+            train_member_labels,
+            eval_set=[(test, test_member_labels)],
+            early_stopping_rounds=50,
+        )
         print("Took:", time() - t, "sec")
 
         preds = attack_model.predict_proba(test)[:, 1]

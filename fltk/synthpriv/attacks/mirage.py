@@ -6,6 +6,7 @@ import os
 from argparse import ArgumentParser
 from multiprocessing import Pool
 from os import path
+from time import time
 
 import pandas as pd
 from fltk.synthpriv.plot import plot_hist, plot_roc
@@ -406,6 +407,8 @@ def evaluate_mia(
     nproc=multiprocessing.cpu_count(),
 ):
     # Train and test MIA per target
+    print("Training attack classifiers...")
+    t = time()
     with Pool(processes=nproc) as pool:
         tasks = [
             (
@@ -426,6 +429,7 @@ def evaluate_mia(
             resultsList.append(res)
             pbar.write("Accuracies: " + " ".join([f"{k}: {v['Accuracy']}" for k, v in res.items()]))
             pbar.update(1)
+    print("Took:", time() - t)
 
     results = {
         AM.__name__: {
