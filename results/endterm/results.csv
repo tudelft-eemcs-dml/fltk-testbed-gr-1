@@ -1,0 +1,67 @@
+attack,dataset,epoch,accuracy
+lgbm,                   purchase,               50,                 0.71
+lgbm,                   purchase,               100,                0.70,           
+lgbm,                   purchase,               150,                0.70,           
+lgbm,                   purchase,               200,                0.70,           
+lgbm,                   purchase,               250,                0.71,           
+lgbm,                   purchase,               300,                0.70,           
+lgbm,                   cifar,              50,                 0.71,           
+lgbm,                   cifar,              100,                0.71
+lgbm,                   cifar,              150,                0.71
+lgbm,                   cifar,              200,                0.71
+lgbm,                   cifar,              250,                0.69
+lgbm,                   cifar,              300,                0.71
+lgbm,                   texas,              50,                 0.81,           
+lgbm,                   texas,              100,                0.83
+lgbm,                   texas,              150,                0.84
+lgbm,                   texas,              200,                0.84
+lgbm,                   texas,              250,                0.84
+lgbm,                   texas,              300,                0.85
+nasr,                   cifar,              100,                0.50
+nasr,                   cifar,              150,                0.49
+nasr,                   cifar,              200,                0.49
+nasr,                   cifar,              250,                0.49
+nasr,                   cifar,              300,                0.49
+nasr,                   texas,              50,                 0.77,           
+nasr,                   texas,              100,                0.80
+nasr,                   texas,              150,                0.82
+nasr,                   texas,              200,                0.83
+nasr,                   texas,              250,                0.83
+nasr,                   texas,              300,                0.83
+nasr,                   purchase,               50
+nasr,                   purchase,               50
+lgbm,                   purchase,               300
+lgbm,                   purchase,               300
+lgbm,                   cifar,              300
+lgbm,                   cifar,              300,                0.76
+lgbm,                   cifar,              300,                0.94
+lgbm,                   cifar,              300,                0.71
+nasr,                   purchase,               50
+nasr,                   purchase,               50
+nasr,                   purchase,               50,                 0.55
+nasr,                   purchase,               100,                0.59,           
+nasr,                   purchase,               150,                0.61,           
+nasr,                   purchase,               200,                0.62,           
+nasr,                   purchase,               250,                0.62,           
+nasr,                   purchase,               300,                0.62,           
+nasr,                   cifar,              50,                 0.50,           
+nasr,                   cifar,              100,                0.50
+nasr,                   cifar,              150,                0.49
+nasr,                   cifar,              200,                0.51
+nasr,                   cifar,              250,                0.50
+nasr,                   cifar,              300,                0.50
+nasr,                   texas,              50,                 0.77,           
+nasr,                   texas,              100,                0.80
+nasr,                   texas,              150,                0.82
+nasr,                   texas,              200,                0.83
+nasr,                   texas,              250,                0.83
+nasr,                   texas,              300,                0.83
+lgbm,                   purchase,               50
+nasr,                   purchase,               300
+nasr,                   purchase,               300
+nasr,                   cifar,              300
+nasr,                   cifar,              300
+lgbm,                   cifar,              300
+nasr,                   cifar,              300,                0.67
+nasr,                   cifar,              300,                0.92
+nasr,                   cifar,              300,                0.50,               

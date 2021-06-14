@@ -249,13 +249,6 @@ def mirage(
 
 
 if __name__ == "__main__":
-    seed = 42
-    random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.empty_cache()
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(42)
-
     mp.set_start_method("spawn")
     mp.set_sharing_strategy("file_system")
     torch.backends.cudnn.benchmark = True
@@ -319,8 +312,8 @@ if __name__ == "__main__":
 
     trainset = dataset.train_dataset
     testset = dataset.test_dataset
-    trainsize = 5000 # min(len(trainset), 25000 if not args.dataset == "cifar" else 15000)
-    testsize = 2500 # min(len(testset), 10000 if not args.dataset == "cifar" else 6000)
+    trainsize = min(len(trainset), 25000 if not args.dataset == "cifar" else 15000)
+    testsize = min(len(testset), 10000 if not args.dataset == "cifar" else 6000)
     print(f"Train set size: {trainsize}, Test set size: {testsize}")
 
     trainset_member, testset_member, trainset_nonmember, testset_nonmember = [], [], [], []

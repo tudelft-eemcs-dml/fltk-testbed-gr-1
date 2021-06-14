@@ -1,0 +1,33 @@
+
+\begin{table}[]
+    \centering
+    \caption{The AUC of attacks for various target models}
+    \begin{tabular}{c|c|c}
+    Target Model & Attack & AUC \\
+    AdultMLP    &    Nasr    &    0.5 \\
+    AdultMLP    &    Mirage (Naive)    &    0.59 \\
+    AdultMLP    &    Mirage (Whitebox)    &    0.51 \\
+    AdultMLP    &    LGBM    &    0.5 \\
+    \hline
+    PurchaseMLP    &    Nasr    &    0.64 \\
+    PurchaseMLP    &    Mirage (Naive)    &    0.75 \\
+    PurchaseMLP    &    Mirage (Hist)    &    0.92 \\
+    PurchaseMLP    &    Mirage (Whitebox)    &    0.5 \\
+    PurchaseMLP    &    LGBM    &    0.59 \\
+    \hline
+    TexasMLP    &    Nasr    &    0.9 \\
+    TexasMLP    &    Mirage (Naive)    &    1 \\
+    TexasMLP    &    LGBM    &    0.86 \\
+    \hline
+    ResNet    &    Nasr    &    0.93 \\
+    ResNet    &    LGBM    &    0.97 \\
+    ResNet (Augmentations)    &    Nasr    &    0.49 \\
+    ResNet (Augmentations)    &    LGBM    &    0.62 \\
+    AlexNet     &    Nasr    &    0.7 \\
+    AlexNet     &    LGBM    &    0.75 \\
+    AlexNet (Augmentations)    &    Nasr    &    0.5 \\
+    AlexNet (Augmentations)    &    LGBM    &    0.51 \\
+    CIFAR    &    Mirage (Naive)    &    0.57 \\
+    \end{tabular}
+    \label{tab:attacks}
+\end{table}

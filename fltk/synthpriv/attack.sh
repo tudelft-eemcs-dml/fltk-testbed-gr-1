@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-for attack in nasr; do
+for attack in nasr lgbm; do
     declare -A datasets_and_models=(
         [purchase_]=PurchaseMLP_DistPurchaseDataset_client1_EPOCH_main.model
         [texas_]=TexasMLP_DistTexasDataset_client1_EPOCH_main.model
@@ -11,7 +11,7 @@ for attack in nasr; do
         [cifar3]=Cifar100ResNet_DistCIFAR100Dataset_client1_EPOCH_main_noAug.model
         [cifar4]=AlexNet_DistCIFAR100Dataset_client1_EPOCH_main_Aug.model
         # [cifar5]=DenseNet_DistCIFAR100Dataset_client1_EPOCH_main_Aug.model
-        # [cifar]=Cifar100ResNet_DistCIFAR100Dataset_client1_EPOCH_main_Aug.model
+        [cifar]=Cifar100ResNet_DistCIFAR100Dataset_client1_EPOCH_main_Aug.model
     )
     for dataset in "${!datasets_and_models[@]}"; do
         for epoch in 300; do
